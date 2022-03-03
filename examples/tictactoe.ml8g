@@ -1,0 +1,69 @@
+board = ^3 ~ {
+    [" "] * 3
+}
+
+printBoard = () : {
+    ;(board ~ row {
+        " " + row ^ " | " + " "
+    }) ^ ("\n" + "-" * 11 + "\n")
+}
+
+checkWin = () : {
+    player = " "
+
+    board ~ row {
+        row{=} ? {
+            player = row.0
+        }
+    }
+
+    ^(board[0]_) ~ col {
+        (board ~ row {
+            row.col
+        }){=} ? {
+            player = board.0.col
+        }
+    }
+
+    (board.0.0 == board.1.1 & board.1.1 == board.2.2) | (board.2.0 == board.1.1 & board.1.1 == board.0.2) ? {
+        player = board.1.1
+    }
+
+    player != " " ? {
+        player
+    }
+}
+
+doTurn = () : {
+    printBoard()
+
+    player = checkWin()
+    player ? {
+        ;player + " wins!"
+        %%
+    }
+
+    ;"Turn: " + turn
+
+    pos = $("Enter pos: ")
+    pos > 9 | pos < 1 ? {
+        ;"Invalid pos"
+        %%
+    }
+    x, y = (pos - 1) /% 3
+
+    board.x.y != " " ? {
+        ;"Pos already occupied"
+        %%
+    }
+    board.x.y = turn
+    turn = turn\x|o\
+}
+
+turn = "x"
+^9 ~ {
+    doTurn()
+}
+
+printBoard()
+;"Draw!"
