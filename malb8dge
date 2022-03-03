@@ -315,6 +315,9 @@ def run(file: str):
 
                 # End replace
                 elif step == 2 and char == "\\" and not braces:
+                    if replace_mode == "|" and not pattern and not fragments and not value:
+                        print_error("SyntaxError: replace pattern cannot be empty with swap replace mode", (char.line, char.col))
+
                     finish_value()
                     _tokens.append(Token("replace", Replace(list(zip_longest(
                         find_pattern,
@@ -2049,7 +2052,7 @@ def run(file: str):
 
 # Command line part
 cliargsparser = argparse.ArgumentParser(
-    description="Malb8dge (thanks @bombie) is ANOTHER programming language made by kr8gz who doesn't know how to make programming languages.",
+    description="malb8dge (thanks bombie) is ANOTHER programming language made by kr8gz who doesn't know how to make programming languages.",
     formatter_class=argparse.RawTextHelpFormatter
 )
 cliargsparser.add_argument('file', help="The input file")
