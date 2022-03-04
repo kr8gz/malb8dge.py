@@ -19,7 +19,7 @@ after_operators = (  # can't have any of these in binary_operators
 )
 
 binary_operators = (  # already sorted by operator precedence
-    '^', '*#', '#*', '#',                        # string stuff
+    '*#', '#*', '#', '^',                        # string stuff
     '**', '@',                                   # misc number stuff
     '/%', '//', '/', '*', '-', '+', '%',         # arithmetic stuff
     '>', '<', '>>', '<<', '==', '!=', '&', '|',  # logic stuff
@@ -334,7 +334,7 @@ def run(file: str):
                 elif step == 1 and char.value in "\\|!@" and not braces:
                     step = 2
 
-                    if not pattern and not fragments and not value:  # idk which one to check so check all lol
+                    if not pattern and not fragments and not value:
                         print_error("SyntaxError: find pattern in replace cannot be empty", (char.line, char.col))
 
                     finish_value()
@@ -2031,7 +2031,7 @@ def run(file: str):
                     target = target.replace(left, right)
 
                 elif inner["mode"] == "swap":
-                    return right.join(left.join(x.split(right)) for x in target.split(left))
+                    target = right.join(left.join(x.split(right)) for x in target.split(left))
 
                 elif inner["mode"] == "first":
                     target = target.replace(left, right, 1)
