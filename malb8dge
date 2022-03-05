@@ -19,10 +19,10 @@ after_operators = (  # can't have any of these in binary_operators
 )
 
 binary_operators = (  # already sorted by operator precedence
-    '*#', '#*', '#', '^',                        # string stuff
-    '**', '@',                                   # misc number stuff
-    '/%', '//', '/', '*', '-', '+', '%',         # arithmetic stuff
-    '>', '<', '>>', '<<', '==', '!=', '&', '|',  # logic stuff
+    '*#', '#*', '#', '^',                                   # string stuff
+    '**', '@',                                              # misc number stuff
+    '/%', '//', '/', '*', '-', '+', '%',                    # arithmetic stuff
+    '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||'  # logic stuff
 )
 
 unary_operators = (
@@ -630,22 +630,23 @@ def run(file: str):
 
             statement = {}
 
-            if token == '<':
-                if can_return:
-                    statement = {
-                        "type": "keyword",
-                        "name": "return",
-                        "value": parse_expression(bm, optional=True)
-                    }
-                else:
-                    print_error("SyntaxError: return statement not in function", token.pos)
+            if token.is_one_of(('<', '%', '>', '%%')):
+                if token == '<':
+                    if can_return:
+                        statement = {
+                            "type": "keyword",
+                            "name": "return",
+                            "value": parse_expression(bm, optional=True)
+                        }
+                    else:
+                        print_error("SyntaxError: return statement not in function", token.pos)
 
-            elif token.is_one_of(('%', '>', '%%')):
-                if token == '%':
+                elif token == '%':
                     if can_break_or_continue:
                         statement = {
                             "type": "keyword",
-                            "name": "break"
+                            "name": "break",
+                            "value": parse_expression(bm, optional=True)
                         }
                     else:
                         print_error("SyntaxError: break not in loop", token.pos)
@@ -939,10 +940,14 @@ def run(file: str):
                     "args": parse_expression(bm.add(), optional=True)
                 }
 
-            elif token.is_one_of(('_', '$')):
+            elif token.is_one_of(('_', '$', '#$')):
                 value = {
                     "type": "input",
-                    "mode": "string" if token == '_' else "number",
+                    "mode": {
+                        "_": "string",
+                        "$": "number",
+                        "#$": "split number"
+                    }[token.value],
                     "prompt": {}
                 }
 
@@ -1214,7 +1219,7 @@ def run(file: str):
             _next()
 
             if token == ':':
-                return [parse_expression(bm)]
+                return [parse_statement(bm, can_return=can_return, can_break_or_continue=can_break_or_continue)]
 
             elif token == '{':
                 stmts = []
@@ -1227,8 +1232,7 @@ def run(file: str):
                         return stmts
                     else:
                         prev()
-                        statement = parse_statement(BracketManager('', '}'), can_return=can_return,
-                                                    can_break_or_continue=can_break_or_continue)
+                        statement = parse_statement(BracketManager('', '}'), can_return=can_return, can_break_or_continue=can_break_or_continue)
                         if statement.get("type"):
                             stmts.append(statement)
 
@@ -1237,7 +1241,7 @@ def run(file: str):
 
             elif not needs_colon:
                 prev()
-                return [parse_expression(bm)]
+                return [parse_statement(bm, can_return=can_return, can_break_or_continue=can_break_or_continue)]
 
             else:
                 if token == Token.none():
@@ -1490,6 +1494,12 @@ def run(file: str):
             elif operator == '|':
                 return a or b
 
+            elif operator == '&&':
+                return bool(a and b)
+
+            elif operator == '||':
+                return bool(a or b)
+
         def run_function_call(_target, _args):
             if not isinstance(_target, func):
                 print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
@@ -1524,11 +1534,11 @@ def run(file: str):
             for i in range(len(inner)):
                 r = run_recursive(scope + [i])
 
-                if r is Keyword.RETURN or r is Keyword.CONTINUE:
+                if r in (Keyword.RETURN, Keyword.CONTINUE):
                     ret.append(r.expr)
                     break
 
-                elif r is Keyword.BREAK:
+                if r is Keyword.BREAK:
                     ret.append(r)
                     break
 
@@ -1550,6 +1560,9 @@ def run(file: str):
 
             elif mode == "number":
                 return to_num(input(prompt))
+
+            elif mode == "split number":
+                return list(map(to_num, input(prompt).split()))
 
         # Print statements
         elif inner["type"] == "print":
@@ -1588,7 +1601,7 @@ def run(file: str):
             elif name == "return":
                 return Keyword.RETURN(run_recursive(scope + ["value"]))
             elif name == "break":
-                return Keyword.BREAK
+                return Keyword.BREAK(run_recursive(scope + ["value"]))
             elif name == "continue":
                 return Keyword.CONTINUE(run_recursive(scope + ["value"]))
             elif name == "exit":
@@ -1934,9 +1947,11 @@ def run(file: str):
                     else:
                         variables[_vars["id"]] = v
 
-                ret = run_recursive(scope + ["statements"])
+                ret: list[Any] = run_recursive(scope + ["statements"])
                 if ret:
                     if ret[-1] is Keyword.BREAK:
+                        if ret[-1].expr is not null:
+                            return_values.append(ret[-1].expr)
                         break
 
                     elif ret[-1] is not null:
@@ -1952,6 +1967,8 @@ def run(file: str):
                 ret = run_recursive(scope + ["statements"])
                 if ret:
                     if ret[-1] is Keyword.BREAK:
+                        if ret[-1].expr is not null:
+                            return_values.append(ret[-1].expr)
                         break
 
                     elif ret[-1] is not null:
@@ -2064,7 +2081,7 @@ if cliargs.debug:
 
 if os.path.isfile(cliargs.file):
     run(cliargs.file)
-elif os.path.isfile(cliargs.file + ".ml8g"):
-    run(cliargs.file + ".ml8g")
+elif os.path.isfile(cliargs.file + ".mlb8"):
+    run(cliargs.file + ".mlb8")
 else:
     print("This file doesn't exist")
