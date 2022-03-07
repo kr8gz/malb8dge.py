@@ -187,7 +187,7 @@ def debug(t):
         print(f"{Fore.CYAN}[DEBUG] {t}{Style.RESET_ALL}")
 
 
-def print_error(msg: str, pos):
+def print_error(msg: str, pos):  # TODO fix fstring error messages especially pos
     global lines
 
     lines = [_.rstrip("\n") for _ in lines]
@@ -501,7 +501,7 @@ def run(file: str):
                     symbol += char.value
 
                 elif symbol + char.value == "###":  # comment
-                    while char != "\n":
+                    while char != "\n" and t < len(chars):
                         _next()
                     prev()
                     return

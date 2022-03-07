@@ -60,6 +60,15 @@ z //= 10
 /"Hello", "World!"
 ```
 
+### If-expressions
+TODO
+
+### Loops
+TODO
+
+### Functions
+TODO
+
 ### Statements
 A statement is basically a piece of code that does something. In malb8dge,
 a statement can be one of the following things:
@@ -99,7 +108,7 @@ multiply = (x, y) : {  ############ block start
 Comments are ignored by the compiler, allowing you to explain your ugly code.
 In malb8dge, there are only single line comments. Comments start with `###`.
 
-## Data Types
+## Data types
 ```
 str    = "Hello World!"
 int    = 16777215
@@ -231,7 +240,22 @@ a || b   ### Return ?(a | b)
          ###     [start, stop, step]
 ```
 
-## Function calls
+## Other syntax
+
+### Interpolated strings
+Strings can have expressions inside them when surrounded by braces (`{...}`).
+No special marker at the start of the string is required for it to be an
+interpolated string. `null` will be treated as an empty string. Interpolated
+strings can also be nested.
+
+Examples:
+```
+"x + y is {x + y}!"
+"test{$ != 1 ? "s"}"  ### no else part → null → empty string
+"There {apples == 1 ? "is 1 apple" ! "are {apples} apples"}!"  ### nesting
+```
+
+### Function calls
 These are pretty normal in malb8dge. The target function is followed by
 parentheses and a list of arguments passed.
 
@@ -243,7 +267,7 @@ otherThing(s)
 doStuff(x, y // 3, true)
 ```
 
-## List indexing
+### List indexing
 List indexing in malb8dge is a bit more complicated than in other languages.
 There is a short form and a standard form. The short form allows for shorter
 code, but reduced functionality. The syntax for the short form is the target,
@@ -271,7 +295,7 @@ list[0]_  ### will get the length of the first element
 (list.0)_ ### this is a valid workaround, but is longer than the standard form
 ```
 
-## Brace syntax
+### Brace syntax
 You can think of brace syntax as a kind of "reduce function". There are 14
 different modes to pick from. The syntax is as follows:
 ```
@@ -287,5 +311,41 @@ The different modes are:
 * `<` / `>` - sort ascending / descending
 * `.` / `^` - get minimum / maximum value
 
-## Replace syntax
-TODO `x\GSKLHJHKLJL!KJHLKJHFKLH\ `
+### Replace syntax
+Replace can only be used on strings. Replacing works in *pairs* which are
+defined in the *patterns*. There are 2 *patterns*: the "find pattern" on the
+left, and the "replace pattern" on the right, which are separated by the mode
+specifier.
+
+There are 4 different replace modes:
+* `\ ` - replace all
+* `!` - replace first
+* `@` - replace last
+* `|` - swap
+
+The replacement action will be performed on each pair.
+
+With *single character mode* (double backslash at the beginning), only single
+characters from both patterns form a *pair*. If not, each value in the pattern
+must be separated by a comma. If there are more find values than replace values,
+any remaining find value will be paired with an empty string. There must not be
+more replace values than find values.
+
+Similarly to strings, replace patterns can be interpolated by using braces
+(`{...}`) too. (Note: only without single character mode)
+
+To escape characters with special meanings (like braces or backslashes), use
+`` ` ``.
+
+Examples:
+```
+s\123\456\   ### replace "123" with "456"
+s\\123\456\  ### replace "1" with "4", "2" with "5" and "3" with "6"
+s\`\\\       ### remove all backslashes
+s\x|o\       ### swap all "x" and "o"
+s\_!{_}\     ### replace first "_" with user input
+```
+
+
+**Please tell me if something is unclear or if I can make anything easier to
+understand!**
