@@ -24,12 +24,13 @@ Values are the smallest elements in malb8dge. They can be one of the following:
 Values may be preceded by one or more *before operators* and/or followed by one
 or more of each of the following:
 
-* a function call
+* after operators
+* function calls
 * list indexing
 * "brace syntax"
 * "replace syntax"
 
-More on each of them later.
+They will be explained in more detail later.
 
 Examples:
 ```
@@ -37,8 +38,8 @@ Examples:
 ^#-16777216
 (2.718281828 > 3.1415926535)
 `["a", 4, false]^^
-?null
-doStuff(x, y // 3, z)
+null
+doStuff(x, y // 3, z){^}[0]\the\\_
 ```
 
 ### Expressions
@@ -71,7 +72,7 @@ a statement can be one of the following things:
 
 ### Blocks
 Blocks are the biggest element in malb8dge. They consist of multiple statements
-in braces `{...}` or a single statement after a colon (`:`) which is sometimes
+in braces (`{...}`) or a single statement after a colon (`:`) which is sometimes
 optional. On the global level, neither the braces nor the colon are required.
 
 Blocks are required for:
@@ -112,9 +113,8 @@ Lists can be created with square brackets (`[]`) or without any brackets.
 It's pretty much the same thing though)*
 
 ## Operators
-I'm just going to dive straight into this, since it's the main part of the
-programming language. Basically everything you know from Python or other
-languages has its own "operator" in malb8dge.
+Operators are the most important part of malb8dge. Basically everything you know
+from Python or other languages has its own "operator" in malb8dge.
 
 The result of trying to keep malb8dge code relatively easy to type (unlike
 other esolangs, no fancy math symbols or anything similar are needed!) is that
@@ -126,9 +126,9 @@ a value.
 ;x                 ### prints x but each element is concatenated
 /x                 ### prints x with spaces separating each element
 
-_ or _(x)          ### gets input with optional prompt (x)
-$ or $(x)          ### gets input as number with optional prompt (x)
-#$ or #$(x)        ### splits input into a list of numbers with optional prompt (x)
+_(x)               ### gets input with optional prompt (x)
+$(x)               ### gets input as number with optional prompt (x)
+#$(x)              ### splits input into a list of numbers with optional prompt (x)
 ```
 If that sounds a little confusing, here are some examples:
 ```
@@ -143,27 +143,114 @@ If that sounds a little confusing, here are some examples:
 _("Password: ")    ### gets a string with password prompt (bad example)
 #$("x, y: ")       ### gets a list of numbers (for coordinates)
 ```
-The "get input as number" part will be explained in more detail later on.
+Note: The print operators also return the string that was printed.
+
+The "get input as number" part will be explained in the Numbers section.
 
 ### Numbers
+```
+x$       ### If x is a list:
+         ###   Convert every element in x to a number
+         ###
+         ### How converting to a number works:
+         ###   - Try converting x to float
+         ###   - If x cannot be converted to float, then error
+         ###   - If x ends in .0, then return x converted to int
+         ###   - Else return x converted to float
+         
+x'       ### Round x to the nearest integer
+-x       ### Negate x
+#x       ### Return the absolute value of x
+x++, x-- ### Return value then increment / decrement
+++x, --x ### Increment / decrement then return value
+
+a @ b    ### If a is a string: Convert base b number in string to an int
+         ### If a is an int:   Return the base b representation of a
+
+a ** b   ### Raise a to the power of b
+a /% b   ### Returns [a // b, a % b]
+a // b   ### Floor division
+a / b    ### Division
+a * b    ### Multiplication
+a - b    ### Subtraction
+a + b    ### Addition
+a % b    ### Modulo
+a ^* b   ### Return the larger value
+a .* b   ### Return the smaller value
+```
 
 ### Strings
+```
+x`       ### Convert x to string / convert every element in a list to string
+x^^      ### Join list with empty string
+x##      ### Split string with space as delimiter
+x#$      ### Split string into a list of digits converted to int
+x_       ### Get length of x
+x``      ### Check if string is alphabetic
+x$$      ### Check if string is numeric
+x@@      ### Check if string is alphanumeric
+.x       ### Convert x to lowercase string
+..x      ### Check if string is lowercase
+`x       ### Convert x to uppercase string
+``x      ### Check if string is uppercase
+'x       ### Convert character to int and vice versa
+
+a *# b   ### Split string a on first occurrence of b
+a #* b   ### Split string a on last occurrence of b
+a # b    ### Split string a with string b as delimiter
+a ^ b    ### Join list a with string b
+```
 
 ### Logic
+```
+?x       ### Convert x to bool
+!x       ### Convert x to bool and inverts value
+
+a > b    ### Check if a is greater than b
+a < b    ### Check if a is less than b
+a >> b   ### Check if a is greater than or equal to b
+a << b   ### Check if a is less than or equal to b
+a == b   ### Check if a is equal to b
+a != b   ### Check if a is not equal to b
+a & b    ### Return a if ?a is false, else return b
+a | b    ### Return a if ?a is true, else return b
+a && b   ### Return ?(a & b)
+a || b   ### Return ?(a | b)
+```
 
 ### Miscellaneous
-FAT TODO ^^^
+```
+@x       ### Reverse x
+^^x      ### Enumerate x
+
+^x       ### If x is an int: create a list of ints from 0 to x - 1
+         ### If x is a list of ints:
+         ###   Create a range based on the following parameters:
+         ###            [stop]
+         ###     [start, stop]
+         ###     [start, stop, step]
+```
 
 ## Function calls
 These are pretty normal in malb8dge. The target function is followed by
 parentheses and a list of arguments passed.
 
+Examples:
+```
+add(3, 4)
+something()
+otherThing(s)
+doStuff(x, y // 3, true)
+```
+
 ## List indexing
 List indexing in malb8dge is a bit more complicated than in other languages.
 There is a short form and a standard form. The short form allows for shorter
-code, but reduced functionality.
+code, but reduced functionality. The syntax for the short form is the target,
+followed by a dot and a value (the index). This value may be a variable or be
+preceded or followed by operators.
 
-Examples for short form: `list.0`, `list.x.y`, `list.1.2.3`
+Examples for short form: `list.0`, `list.x.y`, `list.1.2.3`, `list.-1`
 
 The standard form is what you are probably used to in other programming
 languages. In malb8dge, this standard form is extended to add more
@@ -171,9 +258,9 @@ functionality to reduce the amount of operators which are needed elsewhere.
 
 These functionalities are:
 * `list[x]` normal indexing
-* `list[+x]` element count
-* `list[?x]` list contains element check
-* `list[@x]` index of
+* `list[+x]` count occurrences of x
+* `list[?x]` check if list contains x
+* `list[@x]` index of x in list
 
 It is also possible to mix the short form and the standard form. In some cases,
 it is preferable to use the standard form over the short form to avoid unwanted
@@ -185,7 +272,20 @@ list[0]_  ### will get the length of the first element
 ```
 
 ## Brace syntax
-TODO `x{ASDFSDFDSF}`
+You can think of brace syntax as a kind of "reduce function". There are 14
+different modes to pick from. The syntax is as follows:
+```
+x{mf}
+```
+where `x` is an iterable, `m` is a character specifying one of the predefined
+modes, and `f` is an optional key function.
+
+The different modes are:
+* normal reduce with any of the following 8 operators:
+  `+`, `-`, `*`, `/`, `&`, `|`, `&&`, `||`
+* `=` / `!` - check if all values are equal / different
+* `<` / `>` - sort ascending / descending
+* `.` / `^` - get minimum / maximum value
 
 ## Replace syntax
 TODO `x\GSKLHJHKLJL!KJHLKJHFKLH\ `

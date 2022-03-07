@@ -13,16 +13,15 @@ filename = ""
 lines = []
 
 after_operators = (  # can't have any of these in binary_operators
-    '$', '`',                                 # conversion stuff
-    '^^', '##', '#$', '_', '``', '$$', '@@',  # string stuff
-    '\'',                                     # number stuff
+    '`', '^^', '##', '#$', '_', '``', '$$', '@@',  # string stuff
+    '$', '\'',                                     # number stuff
 )
 
 binary_operators = (  # already sorted by operator precedence
-    '*#', '#*', '#', '^',                                   # string stuff
-    '**', '@',                                              # misc number stuff
-    '/%', '//', '/', '*', '-', '+', '%',                    # arithmetic stuff
-    '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||'  # logic stuff
+    '*#', '#*', '#', '^',                                    # string stuff
+    '@',                                                     # misc stuff
+    '**', '/%', '//', '/', '*', '-', '+', '%', '^*', '.*',   # arithmetic stuff
+    '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',  # logic stuff
 )
 
 unary_operators = (
@@ -464,6 +463,12 @@ def run(file: str):
                 # End number
                 elif not char.value.isnumeric():
                     prev()
+
+                    if value[-1] == ".":
+                        prev()
+                        floating_point = False
+                        value = value[:-1]
+
                     add_number_token()
                     return
 
@@ -494,6 +499,13 @@ def run(file: str):
                     )
                 ):
                     symbol += char.value
+
+                elif symbol + char.value == "###":  # comment
+                    while char != "\n":
+                        _next()
+                    prev()
+                    return
+
                 else:
                     prev()
                     floating_point_override = symbol == "."
@@ -547,7 +559,7 @@ def run(file: str):
 
         class BracketManager:
 
-            def __init__(self, bracket='', *separators):
+            def __init__(self, bm=None, bracket='', *separators):
                 """
                 Put stuff in seperators if you want them to do something
                 else in the current scope other than just ending it
@@ -555,6 +567,9 @@ def run(file: str):
                 Create new BracketManager if you are adding a bracket,
                 else get current bm and use bm.add(*separators)
                 """
+                self.in_func = bm.in_func if bm is not None else False
+                self.in_loop = bm.in_loop if bm is not None else False
+
                 self.bracket = bracket
                 self.bracket_pos = token.pos
                 self.sep = separators
@@ -564,9 +579,9 @@ def run(file: str):
                 Call .add() when there is still parsing to do before returning
                 """
                 if s:
-                    return BracketManager(self.bracket, *self.sep, *s)
+                    return BracketManager(self, self.bracket, *self.sep, *s)
                 else:
-                    return BracketManager(self.bracket, *self.sep, '')
+                    return BracketManager(self, self.bracket, *self.sep, '')
 
             def is_closing(self):
                 if token == self.bracket:
@@ -625,14 +640,14 @@ def run(file: str):
             return v["inner"] if v.get("type") == "group" else v
 
         @add_ast_pos
-        def parse_statement(bm, can_return=False, can_break_or_continue=False) -> dict:
+        def parse_statement(bm) -> dict:
             _next()
 
             statement = {}
 
             if token.is_one_of(('<', '%', '>', '%%')):
                 if token == '<':
-                    if can_return:
+                    if bm.in_func:
                         statement = {
                             "type": "keyword",
                             "name": "return",
@@ -642,7 +657,7 @@ def run(file: str):
                         print_error("SyntaxError: return statement not in function", token.pos)
 
                 elif token == '%':
-                    if can_break_or_continue:
+                    if bm.in_loop:
                         statement = {
                             "type": "keyword",
                             "name": "break",
@@ -652,7 +667,7 @@ def run(file: str):
                         print_error("SyntaxError: break not in loop", token.pos)
 
                 elif token == '>':
-                    if can_break_or_continue:
+                    if bm.in_loop:
                         statement = {
                             "type": "keyword",
                             "name": "continue",
@@ -903,10 +918,10 @@ def run(file: str):
                 value = parse_value(bm.add())  # try again until there is a value
 
             elif token == '(':
-                value = parse_group(BracketManager(')'))
+                value = parse_group(BracketManager(bm, ')'))
 
             elif token == '[':
-                value = parse_list(BracketManager(']'))
+                value = parse_list(BracketManager(bm, ']'))
 
             elif token.type == "string":
                 value = {
@@ -993,17 +1008,17 @@ def run(file: str):
 
                 elif token == '(':
                     if value["type"] == "input" and not value["prompt"]:
-                        value["prompt"] = parse_expression(BracketManager(')'))
+                        value["prompt"] = parse_expression(BracketManager(bm, ')'))
 
                     else:
                         value = {
                             "type": "call",
                             "target": value,
-                            "args": parse_list(BracketManager(')'))
+                            "args": parse_list(BracketManager(bm, ')'))
                         }
 
                 elif token == '[':
-                    value = parse_index(BracketManager(']'), value)
+                    value = parse_index(BracketManager(bm, ']'), value)
 
                 elif token == '.':
                     value = {
@@ -1013,7 +1028,7 @@ def run(file: str):
                     }
 
                 elif token == '{':
-                    value = parse_brace_syntax(BracketManager('}'), value)
+                    value = parse_brace_syntax(BracketManager(bm, '}'), value)
 
                 elif token == ':':
                     value = parse_function(bm.add(), value)
@@ -1084,21 +1099,21 @@ def run(file: str):
                     return {
                         "type": "count",
                         "target": value,
-                        "value": parse_expression(BracketManager(']'))
+                        "value": parse_expression(BracketManager(bm, ']'))
                     }
 
                 elif first and token == '?':  # [?expr] - contains
                     return {
                         "type": "contains",
                         "target": value,
-                        "value": parse_expression(BracketManager(']'))
+                        "value": parse_expression(BracketManager(bm, ']'))
                     }
 
                 elif first and token == '@':  # [@expr] - index of
                     return {
                         "type": "index of",
                         "target": value,
-                        "value": parse_expression(BracketManager(']'))
+                        "value": parse_expression(BracketManager(bm, ']'))
                     }
 
                 elif token == ':':
@@ -1107,7 +1122,7 @@ def run(file: str):
 
                 elif pos == 0 or colon_before:  # first value or after :
                     prev()
-                    values[pos] = parse_expression(BracketManager(']', ':'))
+                    values[pos] = parse_expression(BracketManager(bm, ']', ':'))
 
                 else:
                     print("what the heck!!!")
@@ -1150,7 +1165,9 @@ def run(file: str):
             else:
                 print_error("SyntaxError: invalid argument declaration", token.pos)
 
-            functions.append(parse_block(bm, needs_colon=False, can_return=True))
+            bm.in_func = True
+            bm.in_loop = False
+            functions.append(parse_block(bm, needs_colon=False))
 
             return {
                 "type": "function",
@@ -1160,13 +1177,15 @@ def run(file: str):
 
         @add_ast_pos
         def parse_loop(bm, expr) -> dict:
+            bm.in_loop = True
+
             _next()
 
             if token == '?':
                 return {
                     "type": "while loop",
                     "condition": expr,
-                    "statements": parse_block(bm, needs_colon=False, can_break_or_continue=True)
+                    "statements": parse_block(bm, needs_colon=False)
                 }
 
             elif token == ':' or token == '{':
@@ -1175,7 +1194,7 @@ def run(file: str):
                     "type": "for loop",
                     "list": expr,
                     "vars": None,
-                    "statements": parse_block(bm, can_break_or_continue=True)
+                    "statements": parse_block(bm)
                 }
 
             else:
@@ -1193,7 +1212,7 @@ def run(file: str):
                     "type": "for loop",
                     "list": expr,
                     "vars": var,
-                    "statements": parse_block(bm, can_break_or_continue=True)
+                    "statements": parse_block(bm)
                 }
 
         @add_ast_pos
@@ -1215,11 +1234,11 @@ def run(file: str):
                 "false": on_false
             }
 
-        def parse_block(bm, needs_colon=True, can_return=False, can_break_or_continue=False) -> list[dict]:
+        def parse_block(bm, needs_colon=True) -> list[dict]:
             _next()
 
             if token == ':':
-                return [parse_statement(bm, can_return=can_return, can_break_or_continue=can_break_or_continue)]
+                return [parse_statement(bm)]
 
             elif token == '{':
                 stmts = []
@@ -1232,7 +1251,7 @@ def run(file: str):
                         return stmts
                     else:
                         prev()
-                        statement = parse_statement(BracketManager('', '}'), can_return=can_return, can_break_or_continue=can_break_or_continue)
+                        statement = parse_statement(BracketManager(bm, '', '}'))
                         if statement.get("type"):
                             stmts.append(statement)
 
@@ -1241,19 +1260,18 @@ def run(file: str):
 
             elif not needs_colon:
                 prev()
-                return [parse_statement(bm, can_return=can_return, can_break_or_continue=can_break_or_continue)]
+                return [parse_statement(bm)]
 
             else:
                 if token == Token.none():
-                    print_error(f"SyntaxError: expected statement block",
-                                (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
+                    print_error(f"SyntaxError: expected statement block", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
                 print_error(f"SyntaxError: expected ':' or '{{', found '{token.value}'", token.pos)
 
         @add_ast_pos
         def parse_brace_syntax(bm, value) -> dict:
             _next()
 
-            if token.is_one_of(('+', '-', '*', '/', '&', '|', '=', '!', '<', '>', '.', '^')):
+            if token.is_one_of(('+', '-', '*', '/', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^')):
                 op = token.value
 
                 _next()
@@ -1345,16 +1363,6 @@ def run(file: str):
                 else:
                     print_error(f"TypeError: cannot split type '{a.__class__.__name__}'", inner["pos"])
 
-            # Power operator
-            elif operator == '**':
-                if isinstance(a, (int, float)):
-                    if isinstance(b, (int, float)):
-                        return to_num(a ** b)
-                    else:
-                        print_error(f"TypeError: cannot use type '{b.__class__.__name__}' in exponent", inner["pos"])
-                else:
-                    print_error(f"TypeError: cannot raise type '{a.__class__.__name__}' to a power", inner["pos"])
-
             # Convert to and from base
             elif operator == '@':
                 if isinstance(b, int):
@@ -1381,6 +1389,16 @@ def run(file: str):
 
                 else:
                     print_error(f"TypeError: cannot use type '{b.__class__.__name__}' for base conversion", inner["pos"])
+
+            # Power operator
+            elif operator == '**':
+                if isinstance(a, (int, float)):
+                    if isinstance(b, (int, float)):
+                        return to_num(a ** b)
+                    else:
+                        print_error(f"TypeError: cannot use type '{b.__class__.__name__}' in exponent", inner["pos"])
+                else:
+                    print_error(f"TypeError: cannot raise type '{a.__class__.__name__}' to a power", inner["pos"])
 
             elif operator == '/%':
                 try:
@@ -1468,6 +1486,12 @@ def run(file: str):
                         print_error(f"TypeError: cannot use modulo on type '{a.__class__.__name__}'", inner["pos"])
                 except ZeroDivisionError:
                     print_error(f"MathError: cannot modulo by zero", inner["pos"])
+
+            elif operator == '^*':
+                return max(a, b)
+
+            elif operator == '.*':
+                return min(a, b)
 
             elif operator in ('>', '<', '>>', '<<'):
                 try:
