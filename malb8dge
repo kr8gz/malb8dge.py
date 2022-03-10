@@ -1548,7 +1548,7 @@ def run(file: str):
                 print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
 
             elif len(_target.arguments) != len(_args):
-                print_error(f"ArgumentError: function expected {len(_target.arguments)} argument{'' if len(_target.arguments) == 1 else 's'}, found {len(_args)}", inner["pos"])
+                print_error(f"ArgumentError: function expected {len(_target.arguments)} argument{'' if len(_target.arguments) == 1 else 's'}, got {len(_args)}", inner["pos"])
 
             for n, a in enumerate(_target.arguments):
                 variables[a] = _args[n]
