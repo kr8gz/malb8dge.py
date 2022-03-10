@@ -20,6 +20,7 @@ Values are the smallest elements in malb8dge. They can be one of the following:
 * Lists in brackets
 * Parenthesized expressions
 * Identifiers (variables, true/false, null)
+* Blocks
 
 Values may be preceded by one or more *before operators* and/or followed by one
 or more of each of the following:
@@ -61,7 +62,31 @@ z //= 10
 ```
 
 ### If-expressions
-TODO
+In malb8dge, if-expressions can act as if-statements or ternary operators and
+can be chained to create if-elif-else chains. The syntax for an if-expression
+is:
+
+`<expression> ? <block for true>` or
+`<expression> ? <block for true> ! <block for false>`
+
+Examples:
+```
+$("How old are you? ") < 18 ? {
+    ;"You are younger than 18!"
+} ! {
+    ;"You are 18 or older!"
+}
+
+### or without braces
+$("How old are you? ") < 18 ? ;"You are younger than 18!" ! ;"You are 18 or older!"
+
+### code golfed to the maximum
+;"You are {$("How old are you? ")<18?"younger than 18"!"18 or older"}!"
+
+### chaining
+input = _
+input == "yes" ? ;"yay" ! input == "no" ? ;"nay" ! ;"invalid choice"
+```
 
 ### Loops
 TODO
@@ -84,6 +109,8 @@ one of the following:
 Blocks are the biggest element in malb8dge. They consist of multiple statements
 in braces (`{...}`) or a single statement after a colon (`:`) which is sometimes
 optional. On the global level, neither the braces nor the colon are required.
+Blocks always return the value of the last statement, or `null` if the block is
+empty. This means that blocks (with braces) may also be used as values.
 
 Blocks are required for:
 
@@ -95,18 +122,18 @@ Blocks are required for:
 
 Examples:
 ```
-add = (x, y) : x + y  ############# simple block with one statement
+add = (x, y) : x + y            ### block with one statement, returns x + y
 
-multiply = (x, y) : {  ############ block start
+multiply = (x, y) : {           ### block start
     ;"Multiplying {x} by {y}!"
-    x * y
-}  ################################ block end
+    x * y                       ### return x * y
+}                               ### block end
 
 3 > 2 ? ;"3 is greater than 2"  ### colon not required for if-statements
 ```
 
 ### Comments
-Comments are ignored by the compiler, allowing you to explain your ugly code.
+Comments are ignored by the compiler, allowing you to explain your (ugly) code.
 In malb8dge, there are only single line comments. Comments start with `###`.
 
 ## Data types

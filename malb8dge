@@ -625,14 +625,14 @@ def run(file: str):
 
             def inner(*args, **kwargs):
                 ret = fn(*args, **kwargs)
-                if isinstance(ret, dict) and "pos" not in ret:
-                    set_ast_pos(ret)
+                set_ast_pos(ret)
                 return ret
 
             return inner
 
         def set_ast_pos(d: dict):
-            d["pos"] = (token if t < len(tokens) else tokens[-1]).pos
+            if isinstance(d, dict) and "pos" not in d:
+                d["pos"] = (token if t < len(tokens) else tokens[-1]).pos
 
         def ungroup(v: dict):
             return v["inner"] if v.get("type") == "group" else v
@@ -925,6 +925,13 @@ def run(file: str):
 
             elif token == '[':
                 value = parse_list(BracketManager(bm, ']'))
+
+            elif token == '{':
+                prev()
+                value = {
+                    "type": "block",
+                    "statements": parse_block(bm.add())
+                }
 
             elif token.type == "string":
                 value = {
@@ -1891,6 +1898,11 @@ def run(file: str):
         elif inner["type"] == "group":
             args = run_recursive(scope + ["inner"])
             return args
+
+        # Blocks (as values)
+        elif inner["type"] == "block":
+            args = run_recursive(scope + ["statements"])
+            return args[-1] if args else null
 
         # Lists
         elif inner["type"] == "list":
