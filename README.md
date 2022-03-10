@@ -181,6 +181,7 @@ a ^* b   ### Return the larger value
 a .* b   ### Return the smaller value
 a ** b   ### Raise a to the power of b
 a /% b   ### Returns [a // b, a % b]
+a +- b   ### Returns [a + b, a - b]
 a // b   ### Floor division
 a / b    ### Division
 a * b    ### Multiplication

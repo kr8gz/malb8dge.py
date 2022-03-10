@@ -18,10 +18,10 @@ after_operators = (  # can't have any of these in binary_operators
 )
 
 binary_operators = (  # already sorted by operator precedence
-    '*#', '#*', '#', '^',                                    # string stuff
-    '@',                                                     # misc stuff
-    '^*', '.*', '**', '/%', '//', '/', '*', '-', '+', '%',   # arithmetic stuff
-    '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',  # logic stuff
+    '*#', '#*', '#', '^',                                          # string stuff
+    '@',                                                           # misc stuff
+    '^*', '.*', '**', '/%', '+-', '//', '/', '*', '-', '+', '%',   # arithmetic stuff
+    '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',        # logic stuff
 )
 
 unary_operators = (
@@ -868,7 +868,7 @@ def run(file: str):
                     })
                     set_ast_pos(_expr)
 
-                elif token.value == ';':
+                elif token.value == ';' and not bm.bracket:
                     # run through loop again but treat it as a newline to end statement
                     token.value = '\n'
                     prev()
@@ -1060,7 +1060,7 @@ def run(file: str):
                 elif token.type == "replace":
                     value = parse_replace(value)
 
-                elif token.value == ';':
+                elif token.value == ';' and not bm.bracket:
                     # run through loop again but treat it as a newline to end statement
                     token.value = '\n'
                     prev()
@@ -1430,6 +1430,12 @@ def run(file: str):
                         print_error(f"TypeError: cannot divide type '{a.__class__.__name__}'", inner["pos"])
                 except ZeroDivisionError:
                     print_error(f"MathError: cannot divide by zero", inner["pos"])
+
+            elif operator == '+-':
+                if isinstance(a, (float, int)) and isinstance(b, (float, int)):
+                    return [to_num(a + b), to_num(a - b)]
+                else:
+                    print_error(f"TypeError: cannot use +- operator on types '{a.__class__.__name__}' and '{b.__class__.__name__}'", inner["pos"])
 
             elif operator in '//':
                 try:
