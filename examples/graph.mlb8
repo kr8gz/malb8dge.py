@@ -1,0 +1,33 @@
+draw = (f, x1, y1, x2, y2): {
+    minX, maxX = x1 .* x2, x1 ^* x2
+    minY, maxY = y1 .* y2, y1 ^* y2
+    lpad = minY_ ^* maxY_
+
+    ^[maxY, minY - 1, -1] ~ y {
+        /(
+            (
+                  y == maxY ? " " * (lpad - maxY_) + maxY
+                ! y == minY ? " " * (lpad - minY_) + minY
+                ! y == 0    ? " " * (lpad - 1) + 0
+                !             " " *  lpad
+            ),
+            ^[minX, maxX + 1] ~ x {
+                corners = [
+                    f(x - 0.5) - (y - 0.5) > 0,
+                    f(x - 0.5) - (y + 0.5) > 0,
+                    f(x + 0.5) - (y - 0.5) > 0,
+                    f(x + 0.5) - (y + 0.5) > 0
+                ]
+                !corners{=} ? "■" ! "□"
+            } ^ " "
+        )
+    }
+    minX < 0 & maxX > 0 ? {
+        ;" " * (lpad + 1) + minX + " " * (2 * (-minX - minX_) + 3) + 0 + " " * (2 * maxX - maxX_) + maxX
+    } ! {
+        ;" " * (lpad + 1) + minX + " " * (#(minX - maxX) * 2 - minX_ - maxX_ + 1) + maxX
+    }
+}
+
+draw(x: x/4, -50, -10, 50, 10)
+draw(x: x**3/500, -30, -20, 30, 20)

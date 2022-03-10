@@ -71,7 +71,8 @@ TODO
 
 ### Statements
 A statement is basically a piece of code that does something. In malb8dge,
-a statement can be one of the following things:
+statements are separated by either a newline or a semicolon (`;`) and can be
+one of the following:
 
 * an expression
 * a break statement - `%x` with optional expression x (only in loops)
@@ -176,6 +177,8 @@ x++, x-- ### Return value then increment / decrement
 a @ b    ### If a is a string: Convert base b number in string to an int
          ### If a is an int:   Return the base b representation of a
 
+a ^* b   ### Return the larger value
+a .* b   ### Return the smaller value
 a ** b   ### Raise a to the power of b
 a /% b   ### Returns [a // b, a % b]
 a // b   ### Floor division
@@ -184,8 +187,6 @@ a * b    ### Multiplication
 a - b    ### Subtraction
 a + b    ### Addition
 a % b    ### Modulo
-a ^* b   ### Return the larger value
-a .* b   ### Return the smaller value
 ```
 
 ### Strings
@@ -345,7 +346,6 @@ s\`\\\       ### remove all backslashes
 s\x|o\       ### swap all "x" and "o"
 s\_!{_}\     ### replace first "_" with user input
 ```
-
 
 **Please tell me if something is unclear or if I can make anything easier to
 understand!**

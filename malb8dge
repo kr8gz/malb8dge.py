@@ -20,7 +20,7 @@ after_operators = (  # can't have any of these in binary_operators
 binary_operators = (  # already sorted by operator precedence
     '*#', '#*', '#', '^',                                    # string stuff
     '@',                                                     # misc stuff
-    '**', '/%', '//', '/', '*', '-', '+', '%', '^*', '.*',   # arithmetic stuff
+    '^*', '.*', '**', '/%', '//', '/', '*', '-', '+', '%',   # arithmetic stuff
     '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',  # logic stuff
 )
 
@@ -68,10 +68,6 @@ class Character:
         return f"Character(char='{self.value}', {self.line}:{self.col})"
 
     @staticmethod
-    def none():
-        return Character(" ", 0, 0)
-
-    @staticmethod
     def from_lines(_lines):
         return [Character(char, lineno, colno)
                 for lineno, line in [(a + 1, b) for a, b in enumerate(_lines)]
@@ -80,6 +76,9 @@ class Character:
     @staticmethod
     def from_str(_str):
         return Character.from_lines(_str.split("\n"))
+
+
+Character.none = Character(" ", 0, 0)
 
 
 class Replace:
@@ -139,9 +138,8 @@ class Token:
     def __repr__(self):
         return f"Token(type={self.type}, {repr(self.value)}, {self.pos[0]}:{self.pos[1]})"
 
-    @staticmethod
-    def none():
-        return Token("", None, 0, 0)
+
+Token.none = Token("", None, 0, 0)
 
 
 class func:
@@ -187,7 +185,7 @@ def debug(t):
         print(f"{Fore.CYAN}[DEBUG] {t}{Style.RESET_ALL}")
 
 
-def print_error(msg: str, pos):  # TODO fix fstring error messages especially pos
+def print_error(msg: str, pos):
     global lines
 
     lines = [_.rstrip("\n") for _ in lines]
@@ -238,7 +236,7 @@ def run(file: str):
         _tokens = []
 
         t = -1
-        char = Character.none()
+        char = Character.none
 
         def _next():
             nonlocal t
@@ -255,7 +253,7 @@ def run(file: str):
             if t < len(chars):
                 char = chars[t]
             else:
-                char = Character.none()
+                char = Character.none
 
         def lex_identifier():
             iden = ""
@@ -555,7 +553,7 @@ def run(file: str):
         statements = []
 
         t = -1
-        token = Token.none()
+        token = Token.none
 
         class BracketManager:
 
@@ -614,7 +612,7 @@ def run(file: str):
             if t < len(tokens):
                 token = tokens[t]
             else:
-                token = Token.none()
+                token = Token.none
 
         def add_ast_pos(fn):
             """
@@ -690,7 +688,7 @@ def run(file: str):
                 return statement
 
             _next()
-            if not bm.is_closing() and token != Token.none():
+            if not bm.is_closing() and token != Token.none:
                 print_error(f"SyntaxError: expected end of statement, found '{token.value}'", token.pos)
 
             return statement
@@ -870,6 +868,11 @@ def run(file: str):
                     })
                     set_ast_pos(_expr)
 
+                elif token.value == ';':
+                    # run through loop again but treat it as a newline to end statement
+                    token.value = '\n'
+                    prev()
+
                 else:
                     print_error(
                         f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.value}'",
@@ -980,6 +983,9 @@ def run(file: str):
                     "position": "before"
                 }
 
+            elif token == ':':  # function with no arguments
+                value = parse_function(bm.add(), {"type": "list", "values": []})
+
             elif token.is_one_of(unary_operators):
                 value = {
                     "type": "unary operator",
@@ -988,7 +994,7 @@ def run(file: str):
                 }
 
             elif not optional:
-                if token == Token.none():
+                if token == Token.none:
                     print_error(f"SyntaxError: expected a value, found end of file", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
 
                 else:
@@ -1053,6 +1059,11 @@ def run(file: str):
 
                 elif token.type == "replace":
                     value = parse_replace(value)
+
+                elif token.value == ';':
+                    # run through loop again but treat it as a newline to end statement
+                    token.value = '\n'
+                    prev()
 
                 else:
                     prev()
@@ -1238,7 +1249,11 @@ def run(file: str):
             _next()
 
             if token == ':':
-                return [parse_statement(bm)]
+                statement = parse_statement(bm)
+                if statement.get("type"):
+                    return [statement]
+                else:
+                    print_error("SyntaxError: expected statement", token.pos)
 
             elif token == '{':
                 stmts = []
@@ -1260,10 +1275,14 @@ def run(file: str):
 
             elif not needs_colon:
                 prev()
-                return [parse_statement(bm)]
+                statement = parse_statement(bm)
+                if statement.get("type"):
+                    return [statement]
+                else:
+                    print_error("SyntaxError: expected statement", token.pos)
 
             else:
-                if token == Token.none():
+                if token == Token.none:
                     print_error(f"SyntaxError: expected statement block", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
                 print_error(f"SyntaxError: expected ':' or '{{', found '{token.value}'", token.pos)
 
@@ -2096,7 +2115,7 @@ cliargsparser = argparse.ArgumentParser(
     description="malb8dge (thanks bombie) is ANOTHER programming language made by kr8gz who doesn't know how to make programming languages.",
     formatter_class=argparse.RawTextHelpFormatter
 )
-cliargsparser.add_argument('file', help="The input file")
+cliargsparser.add_argument('file', nargs='?', default="", help="The input file")
 cliargsparser.add_argument('-d', '--debug', action="store_true", help="Whether to run in Debug Mode")
 cliargs = cliargsparser.parse_args()
 
@@ -2107,5 +2126,7 @@ if os.path.isfile(cliargs.file):
     run(cliargs.file)
 elif os.path.isfile(cliargs.file + ".mlb8"):
     run(cliargs.file + ".mlb8")
-else:
+elif cliargs.file:
     print("This file doesn't exist")
+else:
+    print("potential future interactive cmd thingy")
