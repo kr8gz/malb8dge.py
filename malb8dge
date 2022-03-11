@@ -228,8 +228,6 @@ def run(filename, lines):
                 else:
                     line, col = pos, -1
 
-                line += shell_lines
-
                 dashes = "─" * (5 + max(30, len(lines[0])))
                 max_line = len(str(line))
 
@@ -600,7 +598,7 @@ def run(filename, lines):
 
             return _tokens
 
-        lexed_tokens = lex(Character.from_lines(lines))
+        lexed_tokens = lex(Character.from_lines(lines[-1] if SHELL else lines))  # only care about the last line in shell
 
         # Debugging information
         if DEBUG_MODE:
@@ -2226,13 +2224,13 @@ elif cliargs.file:
 
 else:
     SHELL = True
-    shell_lines = 0
+    shell_lines = []
     while True:
         try:
-            run("<shell>", [input(GRAY + ">>> " + RESET)])
+            _line = input(GRAY + ">>> " + RESET)
+            shell_lines.append(_line)
+            run("<shell>", shell_lines)
         except ContinueShell:
             pass
         except (EOFError, KeyboardInterrupt):
             exit()
-
-        shell_lines += 1
