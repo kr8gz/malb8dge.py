@@ -316,7 +316,7 @@ def run(filename, lines):
             iden = ""
             while True:
                 _next()
-                if char.value.isalpha() or (iden and char.value.isnumeric()):
+                if char.value.isalpha() or (iden and char.value.isdecimal()):
                     iden += char.value
                 else:
                     prev()
@@ -516,7 +516,7 @@ def run(filename, lines):
                         continue
 
                 # End number
-                elif not char.value.isnumeric():
+                elif not char.value.isdecimal():
                     prev()
 
                     if value[-1] == ".":
@@ -587,7 +587,7 @@ def run(filename, lines):
                 lex_string()
 
             # Number
-            elif char.value.isnumeric():
+            elif char.value.isdecimal():
                 prev()
                 lex_number()
 
@@ -1923,7 +1923,7 @@ def run(filename, lines):
                     if op == '``':
                         return target.isalpha()
                     elif op == '$$':
-                        return target.isnumeric()
+                        return target.isdecimal()
                     elif op == '@@':
                         return target.isalnum()
                 else:
