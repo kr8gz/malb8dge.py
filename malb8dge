@@ -228,12 +228,14 @@ def run(filename, lines):
                 else:
                     line, col = pos, -1
 
+                line += len(shell_lines) - 1
+
                 dashes = "─" * (5 + max(30, len(lines[0])))
                 max_line = len(str(line))
 
                 print(f"Error in file {filename}:{line}")
                 print(f"  {'':>{max_line}} ┌" + dashes)
-                print(f"> {line:>{max_line}} │   {lines[0]}")
+                print(f"> {line:>{max_line}} │   {lines[-1]}")
 
                 if col != -1:
                     print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
