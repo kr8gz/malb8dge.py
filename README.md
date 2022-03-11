@@ -46,12 +46,9 @@ doStuff(x, y // 3, z){^}[0]\the\\_
 ```
 
 ### Expressions
-Normally, an expression is something that can be evaluated to return a value.
-This definition does not really fit malb8dge expressions very well, since some
-operators act more like statements (but still return a value).
-
-malb8dge expressions consist of one or more values chained together with
-*binary operators*.
+An expression is something that can be evaluated to return a value. malb8dge
+expressions consist of one or more values chained together with *binary
+operators*.
 
 Examples:
 ```
