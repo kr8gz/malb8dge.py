@@ -10,7 +10,13 @@ os.system("")  # enables colors
 
 SHELL = False
 DEBUG_MODE = False
-variables = {}  # all variables are global
+
+# everything is global
+ast = {
+    "statements": [],
+    "functions": []
+}
+variables = {}
 
 after_operators = (  # can't have any of these in binary_operators
     '`', '^^', '##', '#$', '_', '``', '$$', '@@',  # string stuff
@@ -1218,12 +1224,12 @@ def run(filename, lines):
 
             bm.in_func = True
             bm.in_loop = False
-            functions.append(parse_block(bm, needs_colon=False))
+            ast["functions"].append(parse_block(bm, needs_colon=False))
 
             return {
                 "type": "function",
                 "arguments": args,
-                "index": len(functions) - 1  # index of this function in the "functions" scope
+                "index": len(ast["functions"]) - 1  # index of this function in the "functions" scope
             }
 
         @add_ast_pos
@@ -1361,11 +1367,7 @@ def run(filename, lines):
 
         return statements
 
-    functions = []
-    ast = {
-        "statements": parse(lexed_tokens),
-        "functions": functions
-    }
+    ast["statements"] = parse(lexed_tokens)
 
     # Debugging information
     if DEBUG_MODE:
