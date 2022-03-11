@@ -55,6 +55,8 @@ def flatten(lst):
 def _str(x):
     if isinstance(x, bool):
         return str(x).lower()
+    elif isinstance(x, list):
+        return "[" + ", ".join(f'"{y}"' if isinstance(y, str) else _str(y) for y in x) + "]"
     return str(x)
 
 
@@ -207,65 +209,76 @@ def run_file(filename):
 
 def run(filename, lines):
 
-    def print_error(msg: str, pos):
+    def print_error(msg: str, pos=None):
         nonlocal lines
 
         if SHELL:
-            if isinstance(pos, tuple):
-                line, col = pos
-            else:
-                line, col = pos, -1
-
-            line += shell_lines
-
-            dashes = "─" * (5 + max(30, len(lines[0])))
-            max_line = len(str(line))
-
             print(Fore.RED, end="")
-            print(f"Error in file {filename}:{line}")
-            print(f"  {'':>{max_line}} ┌" + dashes)
-            print(f"> {line:>{max_line}} │   {lines[0]}")
 
-            if col != -1:
-                print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
+            if pos is None:
+                print(f"Error in file {filename}")
 
-            print(f"  {'':>{max_line}} └" + dashes)
+            else:
+                if isinstance(pos, tuple):
+                    line, col = pos
+                else:
+                    line, col = pos, -1
+
+                line += shell_lines
+
+                dashes = "─" * (5 + max(30, len(lines[0])))
+                max_line = len(str(line))
+
+                print(f"Error in file {filename}:{line}")
+                print(f"  {'':>{max_line}} ┌" + dashes)
+                print(f"> {line:>{max_line}} │   {lines[0]}")
+
+                if col != -1:
+                    print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
+
+                print(f"  {'':>{max_line}} └" + dashes)
+
             print(msg.replace("\n", "\\n"))
             print(Style.RESET_ALL, end="")
             raise ContinueShell
 
         else:
-            lines = [_.rstrip("\n") for _ in lines]
-
-            if isinstance(pos, tuple):
-                line, col = pos
-            else:
-                line, col = pos, -1
-
-            dashes = "─" * (5 + max(30, len(max(lines[0 if line - 1 < 1 else line - 1:line + 2], key=len))))
-            max_line = len(str(line if line == len(lines) else line + 1))
-
             print(Fore.RED, end="")
-            print(f"Error in file {filename}:{line}")
-            print(f"  {'':>{max_line}} ┌" + dashes)
 
-            if line == 2:
-                print(f"  {line - 1:>{max_line}} |   {lines[line - 2]}")
-            elif line > 2:
-                print(f"  {'':>{max_line}} :   ...")
-                print(f"  {line - 1:>{max_line}} :   {lines[line - 2]}")
+            if pos is None:
+                print(f"Error in file {filename}")
 
-            print(f"> {line:>{max_line}} │   {lines[line - 1]}")
-            if col != -1:
-                print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
+            else:
+                lines = [_.rstrip("\n") for _ in lines]
 
-            if line == len(lines) - 1:
-                print(f"  {line + 1:>{max_line}} │   {lines[line]}")
-            if line < len(lines) - 1:
-                print(f"  {line + 1:>{max_line}} :   {lines[line]}")
-                print(f"  {'':>{max_line}} :   ...")
+                if isinstance(pos, tuple):
+                    line, col = pos
+                else:
+                    line, col = pos, -1
 
-            print(f"  {'':>{max_line}} └" + dashes)
+                dashes = "─" * (5 + max(30, len(max(lines[0 if line - 1 < 1 else line - 1:line + 2], key=len))))
+                max_line = len(str(line if line == len(lines) else line + 1))
+
+                print(f"Error in file {filename}:{line}")
+                print(f"  {'':>{max_line}} ┌" + dashes)
+
+                if line == 2:
+                    print(f"  {line - 1:>{max_line}} |   {lines[line - 2]}")
+                elif line > 2:
+                    print(f"  {'':>{max_line}} :   ...")
+                    print(f"  {line - 1:>{max_line}} :   {lines[line - 2]}")
+
+                print(f"> {line:>{max_line}} │   {lines[line - 1]}")
+                if col != -1:
+                    print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
+
+                if line == len(lines) - 1:
+                    print(f"  {line + 1:>{max_line}} │   {lines[line]}")
+                if line < len(lines) - 1:
+                    print(f"  {line + 1:>{max_line}} :   {lines[line]}")
+                    print(f"  {'':>{max_line}} :   ...")
+
+                print(f"  {'':>{max_line}} └" + dashes)
 
             print(msg.replace("\n", "\\n"))
             print(Style.RESET_ALL, end="")
@@ -2170,15 +2183,16 @@ def run(filename, lines):
 
         return null
 
-    if SHELL:
-        line_return_value = run_recursive(["statements"])
-        if line_return_value and line_return_value[0] != null:
-            out = _str(line_return_value[0])
-            if isinstance(line_return_value[0], str):
-                out = f'"{out}"'
-            print(Fore.CYAN + out + Style.RESET_ALL)
-    else:
-        run_recursive(["statements"])
+    try:
+        if SHELL:
+            line_return_value = run_recursive(["statements"])
+            if line_return_value and line_return_value[0] != null:
+                print(Fore.CYAN + _str(line_return_value[0]) + Style.RESET_ALL)
+        else:
+            run_recursive(["statements"])
+
+    except RecursionError:
+        print_error("RecursionError: recursion limit reached")
 
 
 # Command line part
