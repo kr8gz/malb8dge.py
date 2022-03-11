@@ -2232,4 +2232,7 @@ else:
             run("<shell>", [input(GRAY + ">>> " + RESET)])
         except ContinueShell:
             pass
+        except (EOFError, KeyboardInterrupt):
+            exit()
+
         shell_lines += 1
