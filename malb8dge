@@ -2186,9 +2186,9 @@ def run(filename, lines):
     try:
         if SHELL:
             line_return_value = run_recursive(["statements"])
-            if line_return_value and line_return_value[0] != null:
-                out = _str(line_return_value[0])
-                if isinstance(line_return_value[0], str):
+            if line_return_value and line_return_value[-1] != null:
+                out = _str(line_return_value[-1])
+                if isinstance(line_return_value[-1], str):
                     out = f'"{out}"'
                 print(Fore.CYAN + out + Style.RESET_ALL)
         else:
