@@ -2204,7 +2204,7 @@ else:
     shell_lines = 0
     while True:
         try:
-            run("<shell>", [input(">>> ")])
+            run("<shell>", [input(Fore.LIGHTBLACK_EX + ">>> " + Style.RESET_ALL)])
         except ContinueShell:
             pass
         shell_lines += 1
