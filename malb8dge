@@ -288,849 +288,786 @@ def run(filename, lines):
             print(RESET, end="")
             exit(1)
 
-    # ---------------------------------------------------- Lexing ---------------------------------------------------- #
-    def lex(chars: list[Character]) -> list:
-        _tokens = []
+    try:
 
-        t = -1
-        char = Character.none
+        # -------------------------------------------------- Lexing -------------------------------------------------- #
+        def lex(chars: list[Character]) -> list:
+            _tokens = []
 
-        def _next():
-            nonlocal t
-            t += 1
-            update_t()
+            t = -1
+            char = Character.none
 
-        def prev():
-            nonlocal t
-            t -= 1
-            update_t()
+            def _next():
+                nonlocal t
+                t += 1
+                update_t()
 
-        def update_t():
-            nonlocal t, char
-            if t < len(chars):
-                char = chars[t]
-            else:
-                char = Character.none
+            def prev():
+                nonlocal t
+                t -= 1
+                update_t()
 
-        def lex_identifier():
-            iden = ""
-            while True:
-                _next()
-                if char.value.isalpha() or (iden and char.value.isdecimal()):
-                    iden += char.value
+            def update_t():
+                nonlocal t, char
+                if t < len(chars):
+                    char = chars[t]
                 else:
-                    prev()
-                    _tokens.append(Token("identifier", iden, char.line, char.col))
-                    return
+                    char = Character.none
 
-        def lex_replace():
-            step = 0  # 0 = char mode, 1 = find pattern, 2 = replace pattern
-            char_mode = False  # only used for lexing
-            pattern = []
-            find_pattern = []  # used to store the find pattern so that the replace pattern can be written to the pattern list
-            replace_mode = ""
-            value = ""  # value in this case is the value of the fragment that is currently being lexed
-            fragments = []
-            escape = False
-            braces = 0
-            start = char.line, char.col  # used for unclosed replace EOF error
+            def lex_identifier():
+                iden = ""
+                while True:
+                    _next()
+                    if char.value.isalpha() or (iden and char.value.isdecimal()):
+                        iden += char.value
+                    else:
+                        prev()
+                        _tokens.append(Token("identifier", iden, char.line, char.col))
+                        return
 
-            def finish_value():
-                nonlocal value, fragments
+            def lex_replace():
+                step = 0  # 0 = char mode, 1 = find pattern, 2 = replace pattern
+                char_mode = False  # only used for lexing
+                pattern = []
+                find_pattern = []  # used to store the find pattern so that the replace pattern can be written to the pattern list
+                replace_mode = ""
+                value = ""  # value in this case is the value of the fragment that is currently being lexed
+                fragments = []
+                escape = False
+                braces = 0
+                start = char.line, char.col  # used for unclosed replace EOF error
 
-                if value:
-                    fragments.append((False, value))
-                if fragments:
-                    pattern.append(fragments)
+                def finish_value():
+                    nonlocal value, fragments
+
+                    if value:
+                        fragments.append((False, value))
+                    if fragments:
+                        pattern.append(fragments)
+                    value = ""
+                    fragments = []
+
+                while t + 1 < len(chars):
+
+                    _next()
+
+                    # Lex char mode
+                    if step == 0:
+                        step = 1
+                        if char == "\\":
+                            char_mode = True
+                            continue
+
+                    # Escape characters handling
+                    if escape:
+                        if not braces and char.value in "`\\|!@{},":
+                            value += char.value
+                        else:
+                            value += "`" + char.value
+                        escape = False
+
+                    elif char == "`":
+                        escape = True
+
+                    # End replace
+                    elif step == 2 and char == "\\" and not braces:
+                        if replace_mode == "|" and not pattern and not fragments and not value:
+                            print_error("SyntaxError: replace pattern cannot be empty with swap replace mode", (char.line, char.col))
+
+                        finish_value()
+                        _tokens.append(Token("replace", Replace(list(zip_longest(
+                            find_pattern,
+                            pattern,
+                            fillvalue=[(False, "")]
+                        )), replace_mode), char.line, char.col))
+                        return
+
+                    # End current value
+                    elif not char_mode and char == "," and not braces:
+                        finish_value()
+
+                    # End first pattern and lex replace mode
+                    elif step == 1 and char.value in "\\|!@" and not braces:
+                        step = 2
+
+                        if not pattern and not fragments and not value:
+                            print_error("SyntaxError: find pattern in replace cannot be empty", (char.line, char.col))
+
+                        finish_value()
+                        find_pattern = pattern
+                        pattern = []
+                        replace_mode = char.value
+
+                    # Continue replace
+                    else:
+                        if char == "{" and not escape and not char_mode:
+                            if not braces:
+                                if value:
+                                    fragments.append((False, value))
+                                    value = ""
+                            else:
+                                value += "{"
+                            braces += 1
+
+                        elif char == "}" and not escape and not char_mode:
+                            if braces:
+                                braces -= 1
+                                if not braces:
+                                    fragments.append((True, value))
+                                    value = ""
+                                else:
+                                    value += "}"
+                            else:
+                                print_error("SyntaxError: unescaped '}' in replace", char.pos)
+
+                        else:
+                            if char_mode:
+                                pattern.append([(False, char.value)])  # append value with a single fragment
+                            else:
+                                value += char.value
+
+                else:
+                    print_error("SyntaxError: unclosed replace", start)
+
+            def lex_string():
                 value = ""
                 fragments = []
+                escape = False
+                braces = 0
+                start = char.line, char.col  # used for unclosed string EOF error
 
-            while t + 1 < len(chars):
+                while t + 1 < len(chars):
 
-                _next()
+                    _next()
 
-                # Lex char mode
-                if step == 0:
-                    step = 1
-                    if char == "\\":
-                        char_mode = True
-                        continue
-
-                # Escape characters handling
-                if escape:
-                    if not braces and char.value in "`\\|!@{},":
-                        value += char.value
-                    else:
-                        value += "`" + char.value
-                    escape = False
-
-                elif char == "`":
-                    escape = True
-
-                # End replace
-                elif step == 2 and char == "\\" and not braces:
-                    if replace_mode == "|" and not pattern and not fragments and not value:
-                        print_error("SyntaxError: replace pattern cannot be empty with swap replace mode", (char.line, char.col))
-
-                    finish_value()
-                    _tokens.append(Token("replace", Replace(list(zip_longest(
-                        find_pattern,
-                        pattern,
-                        fillvalue=[(False, "")]
-                    )), replace_mode), char.line, char.col))
-                    return
-
-                # End current value
-                elif not char_mode and char == "," and not braces:
-                    finish_value()
-
-                # End first pattern and lex replace mode
-                elif step == 1 and char.value in "\\|!@" and not braces:
-                    step = 2
-
-                    if not pattern and not fragments and not value:
-                        print_error("SyntaxError: find pattern in replace cannot be empty", (char.line, char.col))
-
-                    finish_value()
-                    find_pattern = pattern
-                    pattern = []
-                    replace_mode = char.value
-
-                # Continue replace
-                else:
-                    if char == "{" and not escape and not char_mode:
+                    # Escape characters handling
+                    if escape:
                         if not braces:
-                            if value:
-                                fragments.append((False, value))
-                                value = ""
-                        else:
-                            value += "{"
-                        braces += 1
-
-                    elif char == "}" and not escape and not char_mode:
-                        if braces:
-                            braces -= 1
-                            if not braces:
-                                fragments.append((True, value))
-                                value = ""
+                            if char == "n":
+                                value += "\n"
+                            elif char == "t":
+                                value += "\t"
+                            elif char.value in "\"\\{}":
+                                value += char.value
                             else:
-                                value += "}"
-                        else:
-                            print_error("SyntaxError: unescaped '}' in replace", char.pos)
-
-                    else:
-                        if char_mode:
-                            pattern.append([(False, char.value)])  # append value with a single fragment
-                        else:
-                            value += char.value
-
-            else:
-                print_error("SyntaxError: unclosed replace", start)
-
-        def lex_string():
-            value = ""
-            fragments = []
-            escape = False
-            braces = 0
-            start = char.line, char.col  # used for unclosed string EOF error
-
-            while t + 1 < len(chars):
-
-                _next()
-
-                # Escape characters handling
-                if escape:
-                    if not braces:
-                        if char == "n":
-                            value += "\n"
-                        elif char == "t":
-                            value += "\t"
-                        elif char.value in "\"\\{}":
-                            value += char.value
+                                value += "\\" + char.value
                         else:
                             value += "\\" + char.value
+                        escape = False
+
+                    elif char == "\\":
+                        escape = True
+
+                    # End string
+                    elif char == "\"" and not braces:
+                        fragments.append((False, value))
+                        _tokens.append(Token("string", String(fragments), char.line, char.col))
+                        return
+
+                    # Continue string
                     else:
-                        value += "\\" + char.value
-                    escape = False
-
-                elif char == "\\":
-                    escape = True
-
-                # End string
-                elif char == "\"" and not braces:
-                    fragments.append((False, value))
-                    _tokens.append(Token("string", String(fragments), char.line, char.col))
-                    return
-
-                # Continue string
-                else:
-                    if char == "{" and not escape:
-                        if not braces:
-                            fragments.append((False, value))
-                            value = ""
-                        else:
-                            value += "{"
-                        braces += 1
-
-                    elif char == "}" and not escape:
-                        if braces:
-                            braces -= 1
+                        if char == "{" and not escape:
                             if not braces:
-                                fragments.append((True, value))
+                                fragments.append((False, value))
                                 value = ""
                             else:
-                                value += "}"
+                                value += "{"
+                            braces += 1
+
+                        elif char == "}" and not escape:
+                            if braces:
+                                braces -= 1
+                                if not braces:
+                                    fragments.append((True, value))
+                                    value = ""
+                                else:
+                                    value += "}"
+                            else:
+                                print_error("SyntaxError: unescaped '}' in string", char.pos)
+
                         else:
-                            print_error("SyntaxError: unescaped '}' in string", char.pos)
+                            value += char.value
 
-                    else:
-                        value += char.value
-
-            else:
-                print_error("SyntaxError: unclosed string", start)
-
-        def lex_number():
-            value = ""
-            floating_point = False
-
-            def add_number_token():
-                if floating_point:
-                    _tokens.append(Token("literal", float(value), char.line, char.col - 1))
                 else:
-                    _tokens.append(Token("literal", int(value), char.line, char.col - 1))
+                    print_error("SyntaxError: unclosed string", start)
 
-            while t + 1 < len(chars):
+            def lex_number():
+                value = ""
+                floating_point = False
 
-                _next()
-
-                # Floating-point number handling
-                if char == "." and not floating_point_override:
-
-                    # Double point
+                def add_number_token():
                     if floating_point:
-                        print_error("SyntaxError: more than one decimal point in number", char.pos)
-
+                        _tokens.append(Token("literal", float(value), char.line, char.col - 1))
                     else:
-                        floating_point = True
-                        value += char.value
-                        continue
+                        _tokens.append(Token("literal", int(value), char.line, char.col - 1))
 
-                # End number
-                elif not char.value.isdecimal():
-                    prev()
+                while t + 1 < len(chars):
 
-                    if value[-1] == ".":
+                    _next()
+
+                    # Floating-point number handling
+                    if char == "." and not floating_point_override:
+
+                        # Double point
+                        if floating_point:
+                            print_error("SyntaxError: more than one decimal point in number", char.pos)
+
+                        else:
+                            floating_point = True
+                            value += char.value
+                            continue
+
+                    # End number
+                    elif not char.value.isdecimal():
                         prev()
-                        floating_point = False
-                        value = value[:-1]
 
+                        if value[-1] == ".":
+                            prev()
+                            floating_point = False
+                            value = value[:-1]
+
+                        add_number_token()
+                        return
+
+                    # Continue number
+                    else:
+                        value += char.value
+
+                else:
                     add_number_token()
                     return
 
-                # Continue number
-                else:
-                    value += char.value
+            def lex_symbol():
+                nonlocal floating_point_override
 
-            else:
-                add_number_token()
-                return
+                symbol = ""
+                while True:
+                    _next()
+                    if (
+                        # make sure it's not a space because that splits symbols
+                        char.value != " " and (
+                            # continue the symbol if it's either...
+                            # - the first character in the symbol
+                            not symbol
+                            # - or it's a combined symbol that exists in the operators list
+                            or symbol + char.value in operators
+                            # - or the current symbol is a binary operator and the character is an equals sign (augmented assignment)
+                            or (symbol in binary_operators and char == '=')
+                        )
+                    ):
+                        symbol += char.value
 
-        def lex_symbol():
-            nonlocal floating_point_override
-
-            symbol = ""
-            while True:
-                _next()
-                if (
-                    # make sure it's not a space because that splits symbols
-                    char.value != " " and (
-                        # continue the symbol if it's either...
-                        # - the first character in the symbol
-                        not symbol
-                        # - or it's a combined symbol that exists in the operators list
-                        or symbol + char.value in operators
-                        # - or the current symbol is a binary operator and the character is an equals sign (augmented assignment)
-                        or (symbol in binary_operators and char == '=')
-                    )
-                ):
-                    symbol += char.value
-
-                elif symbol + char.value == "###":  # comment
-                    while char != "\n" and t < len(chars):
-                        _next()
-                    prev()
-                    return
-
-                else:
-                    prev()
-                    floating_point_override = symbol == "."
-
-                    _tokens.append(Token("symbol", symbol, char.line, char.col))
-                    return
-
-        floating_point_override = False
-
-        while t + 1 < len(chars):
-            _next()
-
-            # Identifier
-            if char.value.isalpha():
-                prev()
-                lex_identifier()
-
-            # Replace
-            elif char == "\\":
-                lex_replace()
-
-            # String
-            elif char == "\"":
-                lex_string()
-
-            # Number
-            elif char.value.isdecimal():
-                prev()
-                lex_number()
-
-            # Symbol
-            elif char != " ":
-                prev()
-                lex_symbol()
-
-        return _tokens
-
-    lexed_tokens = lex(Character.from_lines(lines))
-
-    # Debugging information
-    if DEBUG_MODE:
-        with open(f"{filename}-tokens.txt", "w", encoding="utf-8") as f:
-            f.write("\n".join([f"{_.type:>20} | {_.pos[0]:>2}:{_.pos[1]:<3} | {repr(_.value)}" for _ in lexed_tokens]))
-
-    # --------------------------------------------------- Parsing --------------------------------------------------- #
-    def parse(tokens: list[Token]) -> list[dict]:
-        statements = []
-
-        t = -1
-        token = Token.none
-
-        class BracketManager:
-
-            def __init__(self, bm=None, bracket='', *separators):
-                """
-                Put stuff in seperators if you want them to do something
-                else in the current scope other than just ending it
-
-                Create new BracketManager if you are adding a bracket,
-                else get current bm and use bm.add(*separators)
-                """
-                self.in_func = bm.in_func if bm is not None else False
-                self.in_loop = bm.in_loop if bm is not None else False
-
-                self.bracket = bracket
-                self.bracket_pos = token.pos
-                self.sep = separators
-
-            def add(self, *s):
-                """
-                Call .add() when there is still parsing to do before returning
-                """
-                if s:
-                    return BracketManager(self, self.bracket, *self.sep, *s)
-                else:
-                    return BracketManager(self, self.bracket, *self.sep, '')
-
-            def is_closing(self):
-                if token == self.bracket:
-                    if self.sep:  # when unclosed scopes before opening bracket
+                    elif symbol + char.value == "###":  # comment
+                        while char != "\n" and t < len(chars):
+                            _next()
                         prev()
-                    return True
+                        return
 
-                elif token.is_one_of(self.sep):  # symbols used for other reasons in outer scopes
+                    else:
+                        prev()
+                        floating_point_override = symbol == "."
+
+                        _tokens.append(Token("symbol", symbol, char.line, char.col))
+                        return
+
+            floating_point_override = False
+
+            while t + 1 < len(chars):
+                _next()
+
+                # Identifier
+                if char.value.isalpha():
                     prev()
-                    return True
+                    lex_identifier()
 
-                elif not self.bracket and token == '\n':
+                # Replace
+                elif char == "\\":
+                    lex_replace()
+
+                # String
+                elif char == "\"":
+                    lex_string()
+
+                # Number
+                elif char.value.isdecimal():
                     prev()
-                    return True
+                    lex_number()
 
-                return False
+                # Symbol
+                elif char != " ":
+                    prev()
+                    lex_symbol()
 
-        def _next():
-            nonlocal t
-            t += 1
-            update_t()
+            return _tokens
 
-        def prev():
-            nonlocal t
-            t -= 1
-            update_t()
+        lexed_tokens = lex(Character.from_lines(lines))
 
-        def update_t():
-            nonlocal t, token
-            if t < len(tokens):
-                token = tokens[t]
-            else:
-                token = Token.none
+        # Debugging information
+        if DEBUG_MODE:
+            with open(f"{filename}-tokens.txt", "w", encoding="utf-8") as f:
+                f.write("\n".join([f"{_.type:>20} | {_.pos[0]:>2}:{_.pos[1]:<3} | {repr(_.value)}" for _ in lexed_tokens]))
 
-        def add_ast_pos(fn):
-            """
-            Manually call ``set_ast_pos(dict)`` in:
+        # -------------------------------------------------- Parsing ------------------------------------------------- #
+        def parse(tokens: list[Token]) -> list[dict]:
+            statements = []
 
-            * loops
-            * dictionaries that aren't immediately returned
-            * manually created nested dictionaries
-            """
+            t = -1
+            token = Token.none
 
-            def inner(*args, **kwargs):
-                ret = fn(*args, **kwargs)
-                set_ast_pos(ret)
-                return ret
+            class BracketManager:
 
-            return inner
+                def __init__(self, bm=None, bracket='', *separators):
+                    """
+                    Put stuff in seperators if you want them to do something
+                    else in the current scope other than just ending it
 
-        def set_ast_pos(d: dict):
-            if isinstance(d, dict) and "pos" not in d:
-                d["pos"] = (token if t < len(tokens) else tokens[-1]).pos
+                    Create new BracketManager if you are adding a bracket,
+                    else get current bm and use bm.add(*separators)
+                    """
+                    self.in_func = bm.in_func if bm is not None else False
+                    self.in_loop = bm.in_loop if bm is not None else False
 
-        def ungroup(v: dict):
-            return v["inner"] if v.get("type") == "group" else v
+                    self.bracket = bracket
+                    self.bracket_pos = token.pos
+                    self.sep = separators
 
-        @add_ast_pos
-        def parse_statement(bm) -> dict:
-            _next()
+                def add(self, *s):
+                    """
+                    Call .add() when there is still parsing to do before returning
+                    """
+                    if s:
+                        return BracketManager(self, self.bracket, *self.sep, *s)
+                    else:
+                        return BracketManager(self, self.bracket, *self.sep, '')
 
-            statement = {}
+                def is_closing(self):
+                    if token == self.bracket:
+                        if self.sep:  # when unclosed scopes before opening bracket
+                            prev()
+                        return True
 
-            if token.is_one_of(('<', '%', '>', '%%')):
-                if token == '<':
-                    if bm.in_func:
+                    elif token.is_one_of(self.sep):  # symbols used for other reasons in outer scopes
+                        prev()
+                        return True
+
+                    elif not self.bracket and token == '\n':
+                        prev()
+                        return True
+
+                    return False
+
+            def _next():
+                nonlocal t
+                t += 1
+                update_t()
+
+            def prev():
+                nonlocal t
+                t -= 1
+                update_t()
+
+            def update_t():
+                nonlocal t, token
+                if t < len(tokens):
+                    token = tokens[t]
+                else:
+                    token = Token.none
+
+            def add_ast_pos(fn):
+                """
+                Manually call ``set_ast_pos(dict)`` in:
+
+                * loops
+                * dictionaries that aren't immediately returned
+                * manually created nested dictionaries
+                """
+
+                def inner(*args, **kwargs):
+                    ret = fn(*args, **kwargs)
+                    set_ast_pos(ret)
+                    return ret
+
+                return inner
+
+            def set_ast_pos(d: dict):
+                if isinstance(d, dict) and "pos" not in d:
+                    d["pos"] = (token if t < len(tokens) else tokens[-1]).pos
+
+            def ungroup(v: dict):
+                return v["inner"] if v.get("type") == "group" else v
+
+            @add_ast_pos
+            def parse_statement(bm) -> dict:
+                _next()
+
+                statement = {}
+
+                if token.is_one_of(('<', '%', '>', '%%')):
+                    if token == '<':
+                        if bm.in_func:
+                            statement = {
+                                "type": "keyword",
+                                "name": "return",
+                                "value": parse_expression(bm, optional=True)
+                            }
+                        else:
+                            print_error("SyntaxError: return statement not in function", token.pos)
+
+                    elif token == '%':
+                        if bm.in_loop:
+                            statement = {
+                                "type": "keyword",
+                                "name": "break",
+                                "value": parse_expression(bm, optional=True)
+                            }
+                        else:
+                            print_error("SyntaxError: break not in loop", token.pos)
+
+                    elif token == '>':
+                        if bm.in_loop:
+                            statement = {
+                                "type": "keyword",
+                                "name": "continue",
+                                "value": parse_expression(bm, optional=True)
+                            }
+                        else:
+                            print_error("SyntaxError: continue not in loop", token.pos)
+
+                    elif token == '%%':
                         statement = {
                             "type": "keyword",
-                            "name": "return",
-                            "value": parse_expression(bm, optional=True)
+                            "name": "exit"
                         }
-                    else:
-                        print_error("SyntaxError: return statement not in function", token.pos)
 
-                elif token == '%':
-                    if bm.in_loop:
-                        statement = {
-                            "type": "keyword",
-                            "name": "break",
-                            "value": parse_expression(bm, optional=True)
-                        }
-                    else:
-                        print_error("SyntaxError: break not in loop", token.pos)
+                elif token != '\n':
+                    prev()
+                    statement = parse_expression(bm)
 
-                elif token == '>':
-                    if bm.in_loop:
-                        statement = {
-                            "type": "keyword",
-                            "name": "continue",
-                            "value": parse_expression(bm, optional=True)
-                        }
-                    else:
-                        print_error("SyntaxError: continue not in loop", token.pos)
+                else:
+                    return statement
 
-                elif token == '%%':
-                    statement = {
-                        "type": "keyword",
-                        "name": "exit"
-                    }
+                _next()
+                if not bm.is_closing() and token != Token.none:
+                    print_error(f"SyntaxError: expected end of statement, found '{token.value}'", token.pos)
 
-            elif token != '\n':
-                prev()
-                statement = parse_expression(bm)
-
-            else:
                 return statement
 
-            _next()
-            if not bm.is_closing() and token != Token.none:
-                print_error(f"SyntaxError: expected end of statement, found '{token.value}'", token.pos)
+            @add_ast_pos
+            def parse_list(bm, existing_expr=None) -> dict:
+                values = [] if existing_expr is None else [existing_expr]
 
-            return statement
+                while t + 1 < len(tokens):
+                    _next()
 
-        @add_ast_pos
-        def parse_list(bm, existing_expr=None) -> dict:
-            values = [] if existing_expr is None else [existing_expr]
-
-            while t + 1 < len(tokens):
-                _next()
-
-                # check for closing things
-                if bm.is_closing():
-                    return {
-                        "type": "list",
-                        "values": values
-                    }
-
-                elif token == '\n':
-                    continue  # try again until there is a value
-
-                # start with first expression
-                elif not values:
-                    prev()
-                    values.append(parse_expression(bm.add(',', '=')))
-
-                elif token == ',':
-                    values.append(parse_expression(bm.add(',', '=')))
-
-                # unpacking
-                elif token == '=':
-                    for v in values:
-                        if v.get("type") not in ("get", "index"):
-                            print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
-
-                    expr = parse_expression(bm)
-                    if len(values) == 1:
-                        expr = [expr]
-
-                    return {
-                        "type": "set multiple",
-                        "targets": values,
-                        "values": expr
-                    }
-
-                else:
-                    print_error(f"SyntaxError: expected a comma or a newline, found '{token.value}'", token.pos)
-
-            else:
-                if bm.bracket:
-                    print_error(f"SyntaxError: missing '{bm.bracket}'", bm.bracket_pos)
-
-                else:
-                    return {
-                        "type": "list",
-                        "values": values
-                    }
-
-        @add_ast_pos
-        def parse_expression(bm, optional=False) -> dict:
-            expr = {}
-
-            while t + 1 < len(tokens):
-                _next()
-
-                # ignore newlines in brackets
-                if token == '\n' and bm.bracket:
-                    continue
-
-                # start with first value
-                elif not expr:
-                    prev()
-                    expr = parse_value(bm.add(), optional=optional)
-                    if optional and not expr.get("type"):
-                        return expr
-
-                # check for closing things
-                elif bm.is_closing():
-                    return expr
-
-                # tuple
-                elif token == ',':
-                    prev()
-                    expr = parse_list(bm.add(), existing_expr=expr)
-
-                # loop
-                elif token == '~':
-                    expr = parse_loop(bm.add(), expr)
-
-                # if statement:
-                elif token == '?':
-                    expr = parse_if(bm.add(), expr)
-
-                # augmented assignment
-                elif token.type == "symbol" and token.value[-1] == '=' and token.value[:-1] in binary_operators:
-                    if expr.get("type") == "get":
-                        expr = {
-                            "type": "set",
-                            "id": expr["id"],
-                            "args": {
-                                "type": "binary operator",
-                                "operator": token.value[:-1],
-                                "a": expr,
-                                "b": parse_expression(bm.add())
-                            }
-                        }
-                        set_ast_pos(expr["args"])
-
-                    elif expr.get("type") == "index":
-                        expr = {
-                            "type": "set index",
-                            "target": expr["target"],
-                            "index": expr["index"],
-                            "args": {
-                                "type": "binary operator",
-                                "operator": token.value[:-1],
-                                "a": expr,
-                                "b": parse_expression(bm.add())
-                            }
-                        }
-                        set_ast_pos(expr["args"])
-
-                    else:
-                        print_error("SyntaxError: invalid target for augmented assignment", tokens[t - 1].pos)
-
-                # normal assignment
-                elif token == '=':
-                    expr = ungroup(expr)
-
-                    if expr.get("type") == "get":
-                        expr = {
-                            "type": "set",
-                            "id": expr["id"],
-                            "args": parse_expression(bm.add())
+                    # check for closing things
+                    if bm.is_closing():
+                        return {
+                            "type": "list",
+                            "values": values
                         }
 
-                    elif expr.get("type") == "index":
-                        expr = {
-                            "type": "set index",
-                            "target": expr["target"],
-                            "index": expr["index"],
-                            "args": parse_expression(bm.add())
-                        }
+                    elif token == '\n':
+                        continue  # try again until there is a value
 
-                    elif expr.get("type") == "list":
-                        for v in expr["values"]:
+                    # start with first expression
+                    elif not values:
+                        prev()
+                        values.append(parse_expression(bm.add(',', '=')))
+
+                    elif token == ',':
+                        values.append(parse_expression(bm.add(',', '=')))
+
+                    # unpacking
+                    elif token == '=':
+                        for v in values:
                             if v.get("type") not in ("get", "index"):
                                 print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
 
-                        expr = {
+                        expr = parse_expression(bm)
+                        if len(values) == 1:
+                            expr = [expr]
+
+                        return {
                             "type": "set multiple",
-                            "targets": expr["values"],
-                            "values": parse_expression(bm.add())
+                            "targets": values,
+                            "values": expr
                         }
 
                     else:
-                        print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
-
-                    set_ast_pos(expr)
-
-                # binary operators
-                elif token.is_one_of(binary_operators):
-                    _expr = expr
-
-                    # operator precedence
-                    while _expr["type"] == "binary operator" and binary_operators.index(
-                            token.value) < binary_operators.index(_expr["operator"]):
-                        _expr = _expr["b"]
-
-                    inner = _expr.copy()
-                    _expr.clear()
-                    _expr.update({
-                        "type": "binary operator",
-                        "operator": token.value,
-                        "a": inner,
-                        "b": parse_value(bm.add())
-                    })
-                    set_ast_pos(_expr)
-
-                elif token.value == ';' and not bm.bracket:
-                    # run through loop again but treat it as a newline to end statement
-                    token.value = '\n'
-                    prev()
+                        print_error(f"SyntaxError: expected a comma or a newline, found '{token.value}'", token.pos)
 
                 else:
-                    print_error(
-                        f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.value}'",
-                        token.pos)
+                    if bm.bracket:
+                        print_error(f"SyntaxError: missing '{bm.bracket}'", bm.bracket_pos)
 
-            else:
-                if bm.bracket:
-                    print_error(f"SyntaxError: missing '{bm.bracket}'", bm.bracket_pos)
+                    else:
+                        return {
+                            "type": "list",
+                            "values": values
+                        }
 
-                elif not expr and not optional:
-                    print_error(f"SyntaxError: expected an expression", (token.pos[0], token.pos[1] + 1))
+            @add_ast_pos
+            def parse_expression(bm, optional=False) -> dict:
+                expr = {}
+
+                while t + 1 < len(tokens):
+                    _next()
+
+                    # ignore newlines in brackets
+                    if token == '\n' and bm.bracket:
+                        continue
+
+                    # start with first value
+                    elif not expr:
+                        prev()
+                        expr = parse_value(bm.add(), optional=optional)
+                        if optional and not expr.get("type"):
+                            return expr
+
+                    # check for closing things
+                    elif bm.is_closing():
+                        return expr
+
+                    # tuple
+                    elif token == ',':
+                        prev()
+                        expr = parse_list(bm.add(), existing_expr=expr)
+
+                    # loop
+                    elif token == '~':
+                        expr = parse_loop(bm.add(), expr)
+
+                    # if statement:
+                    elif token == '?':
+                        expr = parse_if(bm.add(), expr)
+
+                    # augmented assignment
+                    elif token.type == "symbol" and token.value[-1] == '=' and token.value[:-1] in binary_operators:
+                        if expr.get("type") == "get":
+                            expr = {
+                                "type": "set",
+                                "id": expr["id"],
+                                "args": {
+                                    "type": "binary operator",
+                                    "operator": token.value[:-1],
+                                    "a": expr,
+                                    "b": parse_expression(bm.add())
+                                }
+                            }
+                            set_ast_pos(expr["args"])
+
+                        elif expr.get("type") == "index":
+                            expr = {
+                                "type": "set index",
+                                "target": expr["target"],
+                                "index": expr["index"],
+                                "args": {
+                                    "type": "binary operator",
+                                    "operator": token.value[:-1],
+                                    "a": expr,
+                                    "b": parse_expression(bm.add())
+                                }
+                            }
+                            set_ast_pos(expr["args"])
+
+                        else:
+                            print_error("SyntaxError: invalid target for augmented assignment", tokens[t - 1].pos)
+
+                    # normal assignment
+                    elif token == '=':
+                        expr = ungroup(expr)
+
+                        if expr.get("type") == "get":
+                            expr = {
+                                "type": "set",
+                                "id": expr["id"],
+                                "args": parse_expression(bm.add())
+                            }
+
+                        elif expr.get("type") == "index":
+                            expr = {
+                                "type": "set index",
+                                "target": expr["target"],
+                                "index": expr["index"],
+                                "args": parse_expression(bm.add())
+                            }
+
+                        elif expr.get("type") == "list":
+                            for v in expr["values"]:
+                                if v.get("type") not in ("get", "index"):
+                                    print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
+
+                            expr = {
+                                "type": "set multiple",
+                                "targets": expr["values"],
+                                "values": parse_expression(bm.add())
+                            }
+
+                        else:
+                            print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
+
+                        set_ast_pos(expr)
+
+                    # binary operators
+                    elif token.is_one_of(binary_operators):
+                        _expr = expr
+
+                        # operator precedence
+                        while _expr["type"] == "binary operator" and binary_operators.index(
+                                token.value) < binary_operators.index(_expr["operator"]):
+                            _expr = _expr["b"]
+
+                        inner = _expr.copy()
+                        _expr.clear()
+                        _expr.update({
+                            "type": "binary operator",
+                            "operator": token.value,
+                            "a": inner,
+                            "b": parse_value(bm.add())
+                        })
+                        set_ast_pos(_expr)
+
+                    elif token.value == ';' and not bm.bracket:
+                        # run through loop again but treat it as a newline to end statement
+                        token.value = '\n'
+                        prev()
+
+                    else:
+                        print_error(
+                            f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.value}'",
+                            token.pos)
 
                 else:
-                    return expr
+                    if bm.bracket:
+                        print_error(f"SyntaxError: missing '{bm.bracket}'", bm.bracket_pos)
 
-        @add_ast_pos
-        def parse_group(bm) -> dict:
-            _next()
+                    elif not expr and not optional:
+                        print_error(f"SyntaxError: expected an expression", (token.pos[0], token.pos[1] + 1))
 
-            if bm.is_closing():
-                return {
-                    "type": "list",
-                    "values": []
-                }
+                    else:
+                        return expr
 
-            else:
-                prev()
-                # this can lead to a weird group -> list structure but shouldn't cause any problems - ungroup(x)
-                return {
-                    "type": "group",
-                    "inner": parse_expression(bm)
-                }
-
-        @add_ast_pos
-        def parse_value(bm, optional=False) -> dict:
-            _next()
-
-            value = {}
-
-            if bm.is_closing():
-                if not optional:
-                    print_error("SyntaxError: expected a value", token.pos)
-                return value
-
-            elif token == '\n':
-                value = parse_value(bm.add())  # try again until there is a value
-
-            elif token == '(':
-                value = parse_group(BracketManager(bm, ')'))
-
-            elif token == '[':
-                value = parse_list(BracketManager(bm, ']'))
-
-            elif token == '{':
-                prev()
-                value = {
-                    "type": "block",
-                    "statements": parse_block(bm.add())
-                }
-
-            elif token.type == "string":
-                value = {
-                    "type": "string",
-                    "fragments": [parse_fragment(frag) for frag in token.value.fragments]
-                }
-
-            elif token.type == "literal":
-                value = {
-                    "type": "literal",
-                    "value": token.value
-                }
-
-            elif token.type == "identifier":
-                if token.is_one_of(("true", "false", "null")):
-                    value = {
-                        "type": "keyword",
-                        "name": token.value
-                    }
-
-                else:
-                    value = {
-                        "type": "get",
-                        "id": token.value
-                    }
-
-            elif token == ';' or token == '/':
-                value = {
-                    "type": "print",
-                    "mode": "normal" if token == ';' else "spaces",
-                    "args": parse_expression(bm.add(), optional=True)
-                }
-
-            elif token.is_one_of(('_', '$', '#$')):
-                value = {
-                    "type": "input",
-                    "mode": {
-                        "_": "string",
-                        "$": "number",
-                        "#$": "split number"
-                    }[token.value],
-                    "prompt": {}
-                }
-
-            elif token.is_one_of(('++', '--')):
-                mode = "add" if token == '++' else "subtract"
-
-                v = parse_value(bm.add())
-                if v["type"] != "get":
-                    print_error("SyntaxError: can only use increment operator on variables", token.pos)
-
-                value = {
-                    "type": "increment",
-                    "id": v["id"],
-                    "mode": mode,
-                    "position": "before"
-                }
-
-            elif token == ':':  # function with no arguments
-                value = parse_function(bm.add(), {"type": "list", "values": []})
-
-            elif token.is_one_of(unary_operators):
-                value = {
-                    "type": "unary operator",
-                    "operator": token.value,
-                    "target": parse_value(bm.add())
-                }
-
-            elif not optional:
-                if token == Token.none:
-                    print_error(
-                        f"SyntaxError: expected a value, found end of {'line' if filename == '<shell>' else 'file'}",
-                        (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1)
-                    )
-
-                else:
-                    print_error(f"SyntaxError: expected a value, found '{token.value}'", token.pos)
-
-            else:
-                prev()
-                return value
-
-            set_ast_pos(value)
-
-            while t + 1 < len(tokens):
+            @add_ast_pos
+            def parse_group(bm) -> dict:
                 _next()
 
                 if bm.is_closing():
+                    return {
+                        "type": "list",
+                        "values": []
+                    }
+
+                else:
+                    prev()
+                    # this can lead to a weird group -> list structure but shouldn't cause any problems - ungroup(x)
+                    return {
+                        "type": "group",
+                        "inner": parse_expression(bm)
+                    }
+
+            @add_ast_pos
+            def parse_value(bm, optional=False) -> dict:
+                _next()
+
+                value = {}
+
+                if bm.is_closing():
+                    if not optional:
+                        print_error("SyntaxError: expected a value", token.pos)
                     return value
 
+                elif token == '\n':
+                    value = parse_value(bm.add())  # try again until there is a value
+
                 elif token == '(':
-                    if value["type"] == "input" and not value["prompt"]:
-                        value["prompt"] = parse_expression(BracketManager(bm, ')'))
+                    value = parse_group(BracketManager(bm, ')'))
+
+                elif token == '[':
+                    value = parse_list(BracketManager(bm, ']'))
+
+                elif token == '{':
+                    prev()
+                    value = {
+                        "type": "block",
+                        "statements": parse_block(bm.add())
+                    }
+
+                elif token.type == "string":
+                    value = {
+                        "type": "string",
+                        "fragments": [parse_fragment(frag) for frag in token.value.fragments]
+                    }
+
+                elif token.type == "literal":
+                    value = {
+                        "type": "literal",
+                        "value": token.value
+                    }
+
+                elif token.type == "identifier":
+                    if token.is_one_of(("true", "false", "null")):
+                        value = {
+                            "type": "keyword",
+                            "name": token.value
+                        }
 
                     else:
                         value = {
-                            "type": "call",
-                            "target": value,
-                            "args": parse_list(BracketManager(bm, ')'))
+                            "type": "get",
+                            "id": token.value
                         }
 
-                elif token == '[':
-                    value = parse_index(BracketManager(bm, ']'), value)
-
-                elif token == '.':
+                elif token == ';' or token == '/':
                     value = {
-                        "type": "index",
-                        "target": value,
-                        "index": parse_value(bm.add('.'))
+                        "type": "print",
+                        "mode": "normal" if token == ';' else "spaces",
+                        "args": parse_expression(bm.add(), optional=True)
                     }
 
-                elif token == '{':
-                    value = parse_brace_syntax(BracketManager(bm, '}'), value)
-
-                elif token == ':':
-                    value = parse_function(bm.add(), value)
-
-                elif token.is_one_of(after_operators):
+                elif token.is_one_of(('_', '$', '#$')):
                     value = {
-                        "type": "after operator",
-                        "operator": token.value,
-                        "target": value
+                        "type": "input",
+                        "mode": {
+                            "_": "string",
+                            "$": "number",
+                            "#$": "split number"
+                        }[token.value],
+                        "prompt": {}
                     }
 
                 elif token.is_one_of(('++', '--')):
-                    if value["type"] != "get":
+                    mode = "add" if token == '++' else "subtract"
+
+                    v = parse_value(bm.add())
+                    if v["type"] != "get":
                         print_error("SyntaxError: can only use increment operator on variables", token.pos)
 
                     value = {
                         "type": "increment",
-                        "id": value["id"],
-                        "mode": "add" if token == '++' else "subtract",
-                        "position": "after"
+                        "id": v["id"],
+                        "mode": mode,
+                        "position": "before"
                     }
 
-                elif token.type == "replace":
-                    value = parse_replace(value)
+                elif token == ':':  # function with no arguments
+                    value = parse_function(bm.add(), {"type": "list", "values": []})
 
-                elif token.value == ';' and not bm.bracket:
-                    # run through loop again but treat it as a newline to end statement
-                    token.value = '\n'
-                    prev()
+                elif token.is_one_of(unary_operators):
+                    value = {
+                        "type": "unary operator",
+                        "operator": token.value,
+                        "target": parse_value(bm.add())
+                    }
+
+                elif not optional:
+                    if token == Token.none:
+                        print_error(
+                            f"SyntaxError: expected a value, found end of {'line' if filename == '<shell>' else 'file'}",
+                            (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1)
+                        )
+
+                    else:
+                        print_error(f"SyntaxError: expected a value, found '{token.value}'", token.pos)
 
                 else:
                     prev()
@@ -1138,1056 +1075,1120 @@ def run(filename, lines):
 
                 set_ast_pos(value)
 
-            else:
-                return value
+                while t + 1 < len(tokens):
+                    _next()
 
-        def parse_fragment(frag: tuple[bool, str]) -> list[dict]:
-            return parse(lex(Character.from_str(frag[1]))) if frag[0] else frag[1]
+                    if bm.is_closing():
+                        return value
 
-        def parse_index(bm, value) -> dict:  # index, index of, slice
-            pos = 0
-            isslice = False
-            values = [None, None, None]
+                    elif token == '(':
+                        if value["type"] == "input" and not value["prompt"]:
+                            value["prompt"] = parse_expression(BracketManager(bm, ')'))
 
-            first = True  # used to check for index of
-            colon_before = False  # used to check if can add index
+                        else:
+                            value = {
+                                "type": "call",
+                                "target": value,
+                                "args": parse_list(BracketManager(bm, ')'))
+                            }
 
-            while t + 1 < len(tokens):
-                _next()
+                    elif token == '[':
+                        value = parse_index(BracketManager(bm, ']'), value)
 
-                # check for closing ]
-                if token == ']':
-                    if isslice:
-                        return {
-                            "type": "slice",
-                            "target": value,
-                            "values": values
-                        }
-
-                    else:
-                        if values[0] is None:
-                            print_error(f"SyntaxError: expected a value", token.pos)
-                        return {
+                    elif token == '.':
+                        value = {
                             "type": "index",
                             "target": value,
-                            "index": values[0]
+                            "index": parse_value(bm.add('.'))
                         }
 
-                elif first and token == '+':  # [+expr] - count
-                    return {
-                        "type": "count",
-                        "target": value,
-                        "value": parse_expression(BracketManager(bm, ']'))
-                    }
+                    elif token == '{':
+                        value = parse_brace_syntax(BracketManager(bm, '}'), value)
 
-                elif first and token == '?':  # [?expr] - contains
-                    return {
-                        "type": "contains",
-                        "target": value,
-                        "value": parse_expression(BracketManager(bm, ']'))
-                    }
+                    elif token == ':':
+                        value = parse_function(bm.add(), value)
 
-                elif first and token == '@':  # [@expr] - index of
-                    return {
-                        "type": "index of",
-                        "target": value,
-                        "value": parse_expression(BracketManager(bm, ']'))
-                    }
+                    elif token.is_one_of(after_operators):
+                        value = {
+                            "type": "after operator",
+                            "operator": token.value,
+                            "target": value
+                        }
 
-                elif token == ':':
-                    isslice = True
-                    pos += 1
+                    elif token.is_one_of(('++', '--')):
+                        if value["type"] != "get":
+                            print_error("SyntaxError: can only use increment operator on variables", token.pos)
 
-                elif pos == 0 or colon_before:  # first value or after :
-                    prev()
-                    values[pos] = parse_expression(BracketManager(bm, ']', ':'))
+                        value = {
+                            "type": "increment",
+                            "id": value["id"],
+                            "mode": "add" if token == '++' else "subtract",
+                            "position": "after"
+                        }
+
+                    elif token.type == "replace":
+                        value = parse_replace(value)
+
+                    elif token.value == ';' and not bm.bracket:
+                        # run through loop again but treat it as a newline to end statement
+                        token.value = '\n'
+                        prev()
+
+                    else:
+                        prev()
+                        return value
+
+                    set_ast_pos(value)
 
                 else:
-                    print("what the heck!!!")
-                    exit(25893589)
+                    return value
 
-                if pos > 2:
-                    print_error("SyntaxError: slice expected at most 3 values", token.pos)
+            def parse_fragment(frag: tuple[bool, str]) -> list[dict]:
+                return parse(lex(Character.from_str(frag[1]))) if frag[0] else frag[1]
 
-                first = False
-                colon_before = token == ':'
+            def parse_index(bm, value) -> dict:  # index, index of, slice
+                pos = 0
+                isslice = False
+                values = [None, None, None]
 
-            else:
-                print_error("SyntaxError: missing ']'", bm.bracket_pos)
-
-        def parse_replace(value) -> dict:
-            return {
-                "type": "replace",
-                "target": value,
-                "mode": {"\\": "normal", "|": "swap", "!": "first", "@": "last"}[token.value.replace_mode],
-                "pairs": list(zip(
-                    [[parse_fragment(f1) for f1 in p[0]] for p in token.value.pairs],
-                    [[parse_fragment(f2) for f2 in p[1]] for p in token.value.pairs],
-                ))
-            }
-
-        @add_ast_pos
-        def parse_function(bm, args) -> dict:
-            args = ungroup(args)
-
-            if args.get("type") == "get":
-                args = [args["id"]]
-
-            elif args.get("type") == "list":
-                for a in args["values"]:
-                    if a.get("type") != "get":
-                        print_error("SyntaxError: invalid argument declaration", token.pos)
-
-                args = [a["id"] for a in args["values"]]
-
-            else:
-                print_error("SyntaxError: invalid argument declaration", token.pos)
-
-            bm.in_func = True
-            bm.in_loop = False
-            ast["functions"].append(parse_block(bm, needs_colon=False))
-
-            return {
-                "type": "function",
-                "arguments": args,
-                "index": len(ast["functions"]) - 1  # index of this function in the "functions" scope
-            }
-
-        @add_ast_pos
-        def parse_loop(bm, expr) -> dict:
-            bm.in_loop = True
-
-            _next()
-
-            if token == '?':
-                return {
-                    "type": "while loop",
-                    "condition": expr,
-                    "statements": parse_block(bm, needs_colon=False)
-                }
-
-            elif token == ':' or token == '{':
-                prev()
-                return {
-                    "type": "for loop",
-                    "list": expr,
-                    "vars": None,
-                    "statements": parse_block(bm)
-                }
-
-            else:
-                prev()
-                var = ungroup(parse_expression(bm.add(':', '{')))
-                if var.get("type") == "list":
-                    for v in var["values"]:
-                        if v.get("type") != "get":
-                            print_error("SyntaxError: invalid target for assignment", token.pos)
-
-                elif var.get("type") != "get":
-                    print_error("SyntaxError: invalid target for assignment", token.pos)
-
-                return {
-                    "type": "for loop",
-                    "list": expr,
-                    "vars": var,
-                    "statements": parse_block(bm)
-                }
-
-        @add_ast_pos
-        def parse_if(bm, condition) -> dict:
-            on_true = parse_block(bm.add('!'), needs_colon=False)
-            on_false = None
-
-            _next()
-
-            if token == '!':
-                on_false = parse_block(bm, needs_colon=False)
-            else:
-                prev()
-
-            return {
-                "type": "if",
-                "condition": condition,
-                "true": on_true,
-                "false": on_false
-            }
-
-        def parse_block(bm, needs_colon=True) -> list[dict]:
-            _next()
-
-            if token == ':':
-                statement = parse_statement(bm)
-                if statement.get("type"):
-                    return [statement]
-                else:
-                    print_error("SyntaxError: expected statement", token.pos)
-
-            elif token == '{':
-                stmts = []
-                bracket_pos = token.pos
+                first = True  # used to check for index of
+                colon_before = False  # used to check if can add index
 
                 while t + 1 < len(tokens):
                     _next()
 
-                    if token == '}':
-                        return stmts
-                    else:
+                    # check for closing ]
+                    if token == ']':
+                        if isslice:
+                            return {
+                                "type": "slice",
+                                "target": value,
+                                "values": values
+                            }
+
+                        else:
+                            if values[0] is None:
+                                print_error(f"SyntaxError: expected a value", token.pos)
+                            return {
+                                "type": "index",
+                                "target": value,
+                                "index": values[0]
+                            }
+
+                    elif first and token == '+':  # [+expr] - count
+                        return {
+                            "type": "count",
+                            "target": value,
+                            "value": parse_expression(BracketManager(bm, ']'))
+                        }
+
+                    elif first and token == '?':  # [?expr] - contains
+                        return {
+                            "type": "contains",
+                            "target": value,
+                            "value": parse_expression(BracketManager(bm, ']'))
+                        }
+
+                    elif first and token == '@':  # [@expr] - index of
+                        return {
+                            "type": "index of",
+                            "target": value,
+                            "value": parse_expression(BracketManager(bm, ']'))
+                        }
+
+                    elif token == ':':
+                        isslice = True
+                        pos += 1
+
+                    elif pos == 0 or colon_before:  # first value or after :
                         prev()
-                        statement = parse_statement(BracketManager(bm, '', '}'))
-                        if statement.get("type"):
-                            stmts.append(statement)
+                        values[pos] = parse_expression(BracketManager(bm, ']', ':'))
+
+                    else:
+                        print("what the heck!!!")
+                        exit(25893589)
+
+                    if pos > 2:
+                        print_error("SyntaxError: slice expected at most 3 values", token.pos)
+
+                    first = False
+                    colon_before = token == ':'
 
                 else:
-                    print_error("SyntaxError: missing '}'", bracket_pos)
+                    print_error("SyntaxError: missing ']'", bm.bracket_pos)
 
-            elif not needs_colon:
-                prev()
-                statement = parse_statement(bm)
-                if statement.get("type"):
-                    return [statement]
+            def parse_replace(value) -> dict:
+                return {
+                    "type": "replace",
+                    "target": value,
+                    "mode": {"\\": "normal", "|": "swap", "!": "first", "@": "last"}[token.value.replace_mode],
+                    "pairs": list(zip(
+                        [[parse_fragment(f1) for f1 in p[0]] for p in token.value.pairs],
+                        [[parse_fragment(f2) for f2 in p[1]] for p in token.value.pairs],
+                    ))
+                }
+
+            @add_ast_pos
+            def parse_function(bm, args) -> dict:
+                args = ungroup(args)
+
+                if args.get("type") == "get":
+                    args = [args["id"]]
+
+                elif args.get("type") == "list":
+                    for a in args["values"]:
+                        if a.get("type") != "get":
+                            print_error("SyntaxError: invalid argument declaration", token.pos)
+
+                    args = [a["id"] for a in args["values"]]
+
                 else:
-                    print_error("SyntaxError: expected statement", token.pos)
+                    print_error("SyntaxError: invalid argument declaration", token.pos)
 
-            else:
-                if token == Token.none:
-                    print_error(f"SyntaxError: expected statement block", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
-                print_error(f"SyntaxError: expected ':' or '{{', found '{token.value}'", token.pos)
+                bm.in_func = True
+                bm.in_loop = False
+                ast["functions"].append(parse_block(bm, needs_colon=False))
 
-        @add_ast_pos
-        def parse_brace_syntax(bm, value) -> dict:
-            _next()
+                return {
+                    "type": "function",
+                    "arguments": args,
+                    "index": len(ast["functions"]) - 1  # index of this function in the "functions" scope
+                }
 
-            if token.is_one_of(('+', '-', '*', '/', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^')):
-                op = token.value
+            @add_ast_pos
+            def parse_loop(bm, expr) -> dict:
+                bm.in_loop = True
 
                 _next()
 
-                if bm.is_closing():
-                    key = None
+                if token == '?':
+                    return {
+                        "type": "while loop",
+                        "condition": expr,
+                        "statements": parse_block(bm, needs_colon=False)
+                    }
+
+                elif token == ':' or token == '{':
+                    prev()
+                    return {
+                        "type": "for loop",
+                        "list": expr,
+                        "vars": None,
+                        "statements": parse_block(bm)
+                    }
 
                 else:
                     prev()
-                    key = parse_expression(bm)
+                    var = ungroup(parse_expression(bm.add(':', '{')))
+                    if var.get("type") == "list":
+                        for v in var["values"]:
+                            if v.get("type") != "get":
+                                print_error("SyntaxError: invalid target for assignment", token.pos)
+
+                    elif var.get("type") != "get":
+                        print_error("SyntaxError: invalid target for assignment", token.pos)
+
+                    return {
+                        "type": "for loop",
+                        "list": expr,
+                        "vars": var,
+                        "statements": parse_block(bm)
+                    }
+
+            @add_ast_pos
+            def parse_if(bm, condition) -> dict:
+                on_true = parse_block(bm.add('!'), needs_colon=False)
+                on_false = None
+
+                _next()
+
+                if token == '!':
+                    on_false = parse_block(bm, needs_colon=False)
+                else:
+                    prev()
 
                 return {
-                    "type": "brace syntax",
-                    "op": op,
-                    "target": value,
-                    "key": key
+                    "type": "if",
+                    "condition": condition,
+                    "true": on_true,
+                    "false": on_false
                 }
 
-            elif bm.is_closing() or token == Token.none:
-                print_error(f"SyntaxError: expected mode specifier", token.pos)
+            def parse_block(bm, needs_colon=True) -> list[dict]:
+                _next()
 
-            else:
-                print_error(f"SyntaxError: unknown mode '{token.value}'", token.pos)
-
-        while t + 1 < len(tokens):
-            if (stmt := parse_statement(BracketManager())).get("type"):
-                statements.append(stmt)
-
-        return statements
-
-    ast["statements"] = parse(lexed_tokens)
-
-    # Debugging information
-    if DEBUG_MODE:
-        with open(f"{filename}-ast.json", "w") as f:
-            json.dump(ast, f, indent=2)
-
-    # --------------------------------------------------- Running --------------------------------------------------- #
-    def run_recursive(scope: list, default_return_value: Any = null):
-
-        # Helper functions
-        def to_num(n):
-            try:
-                n = float(n)
-                if n % 1 == 0:
-                    n = int(n)
-                return n
-            except ValueError:
-                print_error(f"ValueError: cannot convert \"{n}\" to number", inner["pos"])
-
-        def run_binary_operator(a, operator, b):
-
-            # Join operator
-            if operator == '^':
-                if isinstance(b, str):
-                    if isinstance(a, list):
-                        return b.join(map(_str, a))
-                    elif isinstance(a, str):
-                        return b.join(a)
+                if token == ':':
+                    statement = parse_statement(bm)
+                    if statement.get("type"):
+                        return [statement]
                     else:
-                        print_error(f"TypeError: cannot use join on type '{a.__class__.__name__}'", inner["pos"])
-                else:
-                    print_error(f"TypeError: cannot use type '{b.__class__.__name__}' on right side of join operator", inner["pos"])
+                        print_error("SyntaxError: expected statement", token.pos)
 
-            # Split operator
-            elif operator in ('#', '*#', '#*'):
-                if isinstance(a, str):
+                elif token == '{':
+                    stmts = []
+                    bracket_pos = token.pos
+
+                    while t + 1 < len(tokens):
+                        _next()
+
+                        if token == '}':
+                            return stmts
+                        else:
+                            prev()
+                            statement = parse_statement(BracketManager(bm, '', '}'))
+                            if statement.get("type"):
+                                stmts.append(statement)
+
+                    else:
+                        print_error("SyntaxError: missing '}'", bracket_pos)
+
+                elif not needs_colon:
+                    prev()
+                    statement = parse_statement(bm)
+                    if statement.get("type"):
+                        return [statement]
+                    else:
+                        print_error("SyntaxError: expected statement", token.pos)
+
+                else:
+                    if token == Token.none:
+                        print_error(f"SyntaxError: expected statement block", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
+                    print_error(f"SyntaxError: expected ':' or '{{', found '{token.value}'", token.pos)
+
+            @add_ast_pos
+            def parse_brace_syntax(bm, value) -> dict:
+                _next()
+
+                if token.is_one_of(('+', '-', '*', '/', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^')):
+                    op = token.value
+
+                    _next()
+
+                    if bm.is_closing():
+                        key = None
+
+                    else:
+                        prev()
+                        key = parse_expression(bm)
+
+                    return {
+                        "type": "brace syntax",
+                        "op": op,
+                        "target": value,
+                        "key": key
+                    }
+
+                elif bm.is_closing() or token == Token.none:
+                    print_error(f"SyntaxError: expected mode specifier", token.pos)
+
+                else:
+                    print_error(f"SyntaxError: unknown mode '{token.value}'", token.pos)
+
+            while t + 1 < len(tokens):
+                if (stmt := parse_statement(BracketManager())).get("type"):
+                    statements.append(stmt)
+
+            return statements
+
+        ast["statements"] = parse(lexed_tokens)
+
+        # Debugging information
+        if DEBUG_MODE:
+            with open(f"{filename}-ast.json", "w") as f:
+                json.dump(ast, f, indent=2)
+
+        # -------------------------------------------------- Running ------------------------------------------------- #
+        def run_recursive(scope: list, default_return_value: Any = null):
+
+            # Helper functions
+            def to_num(n):
+                try:
+                    n = float(n)
+                    if n % 1 == 0:
+                        n = int(n)
+                    return n
+                except ValueError:
+                    print_error(f"ValueError: cannot convert \"{n}\" to number", inner["pos"])
+
+            def run_binary_operator(a, operator, b):
+
+                # Join operator
+                if operator == '^':
                     if isinstance(b, str):
-
-                        if operator == '#':
-                            if not b:
-                                return list(a)
-                            return a.split(b)
-
-                        elif operator == '*#':
-                            return list(a.partition(b)[::2])
-
-                        elif operator == '#*':
-                            return list(a.rpartition(b)[::2])
-
-                    else:
-                        print_error(f"TypeError: cannot use type '{b.__class__.__name__}' as a delimiter for split", inner["pos"])
-                else:
-                    print_error(f"TypeError: cannot split type '{a.__class__.__name__}'", inner["pos"])
-
-            # Convert to and from base
-            elif operator == '@':
-                if isinstance(b, int):
-                    if b > 36 or b < 2:
-                        print_error(f"ValueError: base must be <= 36 and >= 2, found {b}", inner["pos"])
-
-                    # int a to str in base b
-                    if isinstance(a, int):
-                        result = ""
-                        while a:
-                            result += "0123456789abcdefghijklmnopqrstuvwxyz"[a % b]
-                            a //= b
-                        return result[::-1] or "0"
-
-                    # str a in base b to int
-                    elif isinstance(a, str):
-                        try:
-                            return int(a, b)
-                        except ValueError:
-                            print_error(f"TypeError: cannot interpret '{a}' as a base {b} int", inner["pos"])
-
-                    else:
-                        print_error(f"TypeError: cannot convert type '{a.__class__.__name__}' to base {b} int", inner["pos"])
-
-                else:
-                    print_error(f"TypeError: cannot use type '{b.__class__.__name__}' for base conversion", inner["pos"])
-
-            # Power operator
-            elif operator == '**':
-                if isinstance(a, (int, float)):
-                    if isinstance(b, (int, float)):
-                        return to_num(a ** b)
-                    else:
-                        print_error(f"TypeError: cannot use type '{b.__class__.__name__}' in exponent", inner["pos"])
-                else:
-                    print_error(f"TypeError: cannot raise type '{a.__class__.__name__}' to a power", inner["pos"])
-
-            elif operator == '/%':
-                try:
-                    if isinstance(a, (float, int)):
-                        if isinstance(b, (float, int)):
-                            return [to_num(a // b), to_num(a % b)]
+                        if isinstance(a, list):
+                            return b.join(map(_str, a))
+                        elif isinstance(a, str):
+                            return b.join(a)
                         else:
-                            print_error(f"TypeError: cannot divide type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                            print_error(f"TypeError: cannot use join on type '{a.__class__.__name__}'", inner["pos"])
                     else:
-                        print_error(f"TypeError: cannot divide type '{a.__class__.__name__}'", inner["pos"])
-                except ZeroDivisionError:
-                    print_error(f"MathError: cannot divide by zero", inner["pos"])
+                        print_error(f"TypeError: cannot use type '{b.__class__.__name__}' on right side of join operator", inner["pos"])
 
-            elif operator == '+-':
-                if isinstance(a, (float, int)) and isinstance(b, (float, int)):
-                    return [to_num(a + b), to_num(a - b)]
-                else:
-                    print_error(f"TypeError: cannot use +- operator on types '{a.__class__.__name__}' and '{b.__class__.__name__}'", inner["pos"])
+                # Split operator
+                elif operator in ('#', '*#', '#*'):
+                    if isinstance(a, str):
+                        if isinstance(b, str):
 
-            elif operator in '//':
-                try:
-                    if isinstance(a, (float, int)):
-                        if isinstance(b, (float, int)):
-                            return to_num(a / b if operator == '/' else a // b)
+                            if operator == '#':
+                                if not b:
+                                    return list(a)
+                                return a.split(b)
+
+                            elif operator == '*#':
+                                return list(a.partition(b)[::2])
+
+                            elif operator == '#*':
+                                return list(a.rpartition(b)[::2])
+
                         else:
-                            print_error(f"TypeError: cannot divide type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                            print_error(f"TypeError: cannot use type '{b.__class__.__name__}' as a delimiter for split", inner["pos"])
                     else:
-                        print_error(f"TypeError: cannot divide type '{a.__class__.__name__}'", inner["pos"])
-                except ZeroDivisionError:
-                    print_error(f"MathError: cannot divide by zero", inner["pos"])
+                        print_error(f"TypeError: cannot split type '{a.__class__.__name__}'", inner["pos"])
 
-            elif operator == '*':
-                if isinstance(a, float):
-                    if isinstance(b, (float, int)):
-                        return to_num(a * b)
-                    else:
-                        print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
-                elif isinstance(a, int):
-                    if isinstance(b, (float, int)):
-                        return to_num(a * b)
-                    elif isinstance(b, (str, list)):
-                        return a * b
-                    else:
-                        print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
-                elif isinstance(a, (str, list)):
+                # Convert to and from base
+                elif operator == '@':
                     if isinstance(b, int):
-                        return a * b
-                    else:
-                        print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
-                else:
-                    print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}'", inner["pos"])
+                        if b > 36 or b < 2:
+                            print_error(f"ValueError: base must be <= 36 and >= 2, found {b}", inner["pos"])
 
-            elif operator == '-':
-                if isinstance(a, (float, int)):
-                    if isinstance(b, (float, int)):
-                        return to_num(a - b)
-                    else:
-                        print_error(f"TypeError: cannot subtract type '{b.__class__.__name__}' from type '{a.__class__.__name__}'", inner["pos"])
-                else:
-                    print_error(f"TypeError: cannot subtract from type '{a.__class__.__name__}'", inner["pos"])
+                        # int a to str in base b
+                        if isinstance(a, int):
+                            result = ""
+                            while a:
+                                result += "0123456789abcdefghijklmnopqrstuvwxyz"[a % b]
+                                a //= b
+                            return result[::-1] or "0"
 
-            elif operator == '+':
-                if isinstance(a, (float, int)):
-                    if isinstance(b, (float, int)):
-                        return to_num(a + b)
-                    elif isinstance(b, str):
-                        return _str(a) + b
-                    else:
-                        print_error(f"TypeError: cannot add type '{b.__class__.__name__}' to type '{a.__class__.__name__}'", inner["pos"])
-                elif isinstance(a, str):
-                    if isinstance(b, list):
-                        return a + " ".join(map(_str, b))
-                    else:
-                        return a + _str(b)
-                elif isinstance(a, list):
-                    if isinstance(b, list):
-                        return a + b
-                    else:
-                        return a + [b]
-                else:
-                    print_error(f"TypeError: cannot add to type '{a.__class__.__name__}'", inner["pos"])
+                        # str a in base b to int
+                        elif isinstance(a, str):
+                            try:
+                                return int(a, b)
+                            except ValueError:
+                                print_error(f"TypeError: cannot interpret '{a}' as a base {b} int", inner["pos"])
 
-            elif operator == '%':
-                try:
+                        else:
+                            print_error(f"TypeError: cannot convert type '{a.__class__.__name__}' to base {b} int", inner["pos"])
+
+                    else:
+                        print_error(f"TypeError: cannot use type '{b.__class__.__name__}' for base conversion", inner["pos"])
+
+                # Power operator
+                elif operator == '**':
+                    if isinstance(a, (int, float)):
+                        if isinstance(b, (int, float)):
+                            return to_num(a ** b)
+                        else:
+                            print_error(f"TypeError: cannot use type '{b.__class__.__name__}' in exponent", inner["pos"])
+                    else:
+                        print_error(f"TypeError: cannot raise type '{a.__class__.__name__}' to a power", inner["pos"])
+
+                elif operator == '/%':
+                    try:
+                        if isinstance(a, (float, int)):
+                            if isinstance(b, (float, int)):
+                                return [to_num(a // b), to_num(a % b)]
+                            else:
+                                print_error(f"TypeError: cannot divide type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                        else:
+                            print_error(f"TypeError: cannot divide type '{a.__class__.__name__}'", inner["pos"])
+                    except ZeroDivisionError:
+                        print_error(f"MathError: cannot divide by zero", inner["pos"])
+
+                elif operator == '+-':
+                    if isinstance(a, (float, int)) and isinstance(b, (float, int)):
+                        return [to_num(a + b), to_num(a - b)]
+                    else:
+                        print_error(f"TypeError: cannot use +- operator on types '{a.__class__.__name__}' and '{b.__class__.__name__}'", inner["pos"])
+
+                elif operator in '//':
+                    try:
+                        if isinstance(a, (float, int)):
+                            if isinstance(b, (float, int)):
+                                return to_num(a / b if operator == '/' else a // b)
+                            else:
+                                print_error(f"TypeError: cannot divide type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                        else:
+                            print_error(f"TypeError: cannot divide type '{a.__class__.__name__}'", inner["pos"])
+                    except ZeroDivisionError:
+                        print_error(f"MathError: cannot divide by zero", inner["pos"])
+
+                elif operator == '*':
+                    if isinstance(a, float):
+                        if isinstance(b, (float, int)):
+                            return to_num(a * b)
+                        else:
+                            print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                    elif isinstance(a, int):
+                        if isinstance(b, (float, int)):
+                            return to_num(a * b)
+                        elif isinstance(b, (str, list)):
+                            return a * b
+                        else:
+                            print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                    elif isinstance(a, (str, list)):
+                        if isinstance(b, int):
+                            return a * b
+                        else:
+                            print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                    else:
+                        print_error(f"TypeError: cannot multiply type '{a.__class__.__name__}'", inner["pos"])
+
+                elif operator == '-':
                     if isinstance(a, (float, int)):
                         if isinstance(b, (float, int)):
-                            return to_num(a % b)
+                            return to_num(a - b)
                         else:
-                            print_error(f"TypeError: cannot modulo type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                            print_error(f"TypeError: cannot subtract type '{b.__class__.__name__}' from type '{a.__class__.__name__}'", inner["pos"])
                     else:
-                        print_error(f"TypeError: cannot use modulo on type '{a.__class__.__name__}'", inner["pos"])
-                except ZeroDivisionError:
-                    print_error(f"MathError: cannot modulo by zero", inner["pos"])
+                        print_error(f"TypeError: cannot subtract from type '{a.__class__.__name__}'", inner["pos"])
 
-            elif operator == '^*':
-                return max(a, b)
+                elif operator == '+':
+                    if isinstance(a, (float, int)):
+                        if isinstance(b, (float, int)):
+                            return to_num(a + b)
+                        elif isinstance(b, str):
+                            return _str(a) + b
+                        else:
+                            print_error(f"TypeError: cannot add type '{b.__class__.__name__}' to type '{a.__class__.__name__}'", inner["pos"])
+                    elif isinstance(a, str):
+                        if isinstance(b, list):
+                            return a + " ".join(map(_str, b))
+                        else:
+                            return a + _str(b)
+                    elif isinstance(a, list):
+                        if isinstance(b, list):
+                            return a + b
+                        else:
+                            return a + [b]
+                    else:
+                        print_error(f"TypeError: cannot add to type '{a.__class__.__name__}'", inner["pos"])
 
-            elif operator == '.*':
-                return min(a, b)
-
-            elif operator in ('>', '<', '>>', '<<'):
-                try:
-                    if operator == '>':
-                        return a > b
-                    elif operator == '<':
-                        return a < b
-                    elif operator == '>>':
-                        return a >= b
-                    elif operator == '<<':
-                        return a <= b
-                except TypeError:
-                    print_error(f"TypeError: cannot compare type '{a.__class__.__name__}' with type '{b.__class__.__name__}'", inner["pos"])
-
-            elif operator == '==':
-                return a == b
-
-            elif operator == '!=':
-                return a != b
-
-            elif operator == '&':
-                return a and b
-
-            elif operator == '|':
-                return a or b
-
-            elif operator == '&&':
-                return bool(a and b)
-
-            elif operator == '||':
-                return bool(a or b)
-
-        def run_function_call(_target, _args):
-            if not isinstance(_target, func):
-                print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
-
-            elif len(_target.arguments) != len(_args):
-                print_error(f"ArgumentError: function expected {len(_target.arguments)} argument{'' if len(_target.arguments) == 1 else 's'}, got {len(_args)}", inner["pos"])
-
-            for n, a in enumerate(_target.arguments):
-                variables[a] = _args[n]
-
-            _ret: Any = run_recursive(["functions", _target.index])
-            return _ret[-1] if _ret else null
-
-        def concatenate_fragments(fragments: list, fragments_scope: list):
-            c = ""
-            for n, frag in enumerate(fragments):
-                if isinstance(frag, str):
-                    c += frag
-                else:
-                    val = run_recursive(scope + [*fragments_scope, n])
-                    c += _str(val[-1] if val else null)
-
-            return c
-
-        inner: dict = ast
-        for s in scope:
-            inner = inner[s]
-
-        if isinstance(inner, list):
-            ret = []
-
-            for i in range(len(inner)):
-                r = run_recursive(scope + [i])
-
-                if r in (Keyword.RETURN, Keyword.CONTINUE):
-                    ret.append(r.expr)
-                    break
-
-                if r is Keyword.BREAK:
-                    ret.append(r)
-                    break
-
-                ret.append(r)
-
-            return ret
-
-        elif inner is None or not inner.get("type"):
-            return default_return_value
-
-        # Input statements
-        elif inner["type"] == "input":
-            mode = inner["mode"]
-            prompt = run_recursive(scope + ["prompt"])
-            prompt = "" if prompt is null else prompt
-
-            if SHELL:
-                prompt = GREEN + prompt + RESET
-
-            _input = input(prompt)
-
-            if mode == "string":
-                return _input
-
-            elif mode == "number":
-                return to_num(_input)
-
-            elif mode == "split number":
-                return list(map(to_num, _input.split()))
-
-        # Print statements
-        elif inner["type"] == "print":
-            mode = inner["mode"]
-            args = run_recursive(scope + ["args"], default_return_value="")
-
-            output = ""
-
-            if mode == "normal":
-                if isinstance(args, list):
-                    output = "".join(map(_str, args))
-                else:
-                    output = _str(args)
-
-            elif mode == "spaces":
-                if isinstance(args, list):
-                    output = " ".join(map(_str, args))
-                elif not isinstance(args, str):
-                    output = " ".join(_str(args))
-                else:
-                    output = " ".join(args)
-
-            if SHELL:
-                print(GREEN + output + RESET)
-            else:
-                print(output)
-            return output
-
-        # Keywords
-        elif inner["type"] == "keyword":
-            name = inner["name"]
-
-            if name == "true":
-                return True
-            elif name == "false":
-                return False
-            elif name == "null":
-                return null
-            elif name == "return":
-                return Keyword.RETURN(run_recursive(scope + ["value"]))
-            elif name == "break":
-                return Keyword.BREAK(run_recursive(scope + ["value"]))
-            elif name == "continue":
-                return Keyword.CONTINUE(run_recursive(scope + ["value"]))
-            elif name == "exit":
-                exit()
-
-        # Get variable
-        elif inner["type"] == "get":
-            name = inner["id"]
-            if name in variables:
-                return variables[name]
-            else:
-                print_error(f"UndefinedError: variable '{name}' is not defined", inner["pos"])
-
-        # Set variable
-        elif inner["type"] == "set":
-            name = inner["id"]
-            args = run_recursive(scope + ["args"])
-
-            variables[name] = args
-            return variables[name]
-
-        # Set list index
-        elif inner["type"] == "set index":
-            target = run_recursive(scope + ["target"])
-            index = run_recursive(scope + ["index"])
-            args = run_recursive(scope + ["args"])
-
-            try:
-                target[index] = args
-                return target[index]
-            except TypeError:
-                print_error(f"TypeError: cannot assign index of type '{target.__class__.__name__}'", inner["pos"])
-
-        # Unpacking
-        elif inner["type"] == "set multiple":
-            values = run_recursive(scope + ["values"])
-
-            if not isinstance(values, (str, list)):
-                print_error(f"TypeError: cannot unpack type '{values.__class__.__name__}'", inner["pos"])
-
-            elif len(inner["targets"]) > len(values):
-                print_error(f"ValueError: not enough values to unpack (targets: {len(inner['targets'])}, values: {len(values)})", inner["pos"])
-
-            elif len(inner["targets"]) < len(values):
-                print_error(f"ValueError: too many values to unpack (targets: {len(inner['targets'])}, values: {len(values)})", inner["pos"])
-
-            return_values = []
-
-            for i, v in enumerate(inner["targets"]):
-                # Set variable
-                if v.get("type") == "get":
-                    name = v["id"]
-                    variables[name] = values[i]
-                    return_values.append(variables[name])
-
-                # Set list index
-                elif v.get("type") == "index":
-                    target = run_recursive(scope + ["targets", i, "target"])
-                    index = run_recursive(scope + ["targets", i, "index"])
-
+                elif operator == '%':
                     try:
-                        target[index] = values[i]
-                        return_values.append(target[index])
+                        if isinstance(a, (float, int)):
+                            if isinstance(b, (float, int)):
+                                return to_num(a % b)
+                            else:
+                                print_error(f"TypeError: cannot modulo type '{a.__class__.__name__}' by type '{b.__class__.__name__}'", inner["pos"])
+                        else:
+                            print_error(f"TypeError: cannot use modulo on type '{a.__class__.__name__}'", inner["pos"])
+                    except ZeroDivisionError:
+                        print_error(f"MathError: cannot modulo by zero", inner["pos"])
+
+                elif operator == '^*':
+                    return max(a, b)
+
+                elif operator == '.*':
+                    return min(a, b)
+
+                elif operator in ('>', '<', '>>', '<<'):
+                    try:
+                        if operator == '>':
+                            return a > b
+                        elif operator == '<':
+                            return a < b
+                        elif operator == '>>':
+                            return a >= b
+                        elif operator == '<<':
+                            return a <= b
                     except TypeError:
-                        print_error(f"TypeError: cannot assign index of type '{target.__class__.__name__}'", inner["pos"])
+                        print_error(f"TypeError: cannot compare type '{a.__class__.__name__}' with type '{b.__class__.__name__}'", inner["pos"])
 
-            return return_values
+                elif operator == '==':
+                    return a == b
 
-        # Unary operators
-        elif inner["type"] == "unary operator":
-            op = inner["operator"]
-            target = run_recursive(scope + ["target"])
+                elif operator == '!=':
+                    return a != b
 
-            if op == '-':
-                if isinstance(target, (float, int)):
-                    return -target
-                else:
-                    print_error(f"TypeError: expected a number for unary minus, found type '{target.__class__.__name__}'", inner["pos"])
+                elif operator == '&':
+                    return a and b
 
-            elif op == '@':
-                if isinstance(target, bool):
-                    return "".join(reversed(_str(target)))
-                elif isinstance(target, (int, float)):
-                    if target >= 0:
-                        return to_num("".join(reversed(str(target))))
-                    return -to_num("".join(reversed(str(-target))))
-                elif isinstance(target, str):
-                    return "".join(reversed(target))
-                elif isinstance(target, list):
-                    return list(reversed(target))
-                else:
-                    print_error(f"TypeError: cannot use reverse operator on type '{target.__class__.__name__}'", inner["pos"])
+                elif operator == '|':
+                    return a or b
 
-            elif op == '^':
-                if isinstance(target, int):
-                    return list(range(target))
-                elif isinstance(target, list):
-                    if len(target) > 3:
-                        print_error(f"TypeError: expected at most 3 values for range, found {len(target)}", inner["pos"])
-                    elif len(target) < 1:
-                        print_error(f"TypeError: expected at least 1 value for range, found {len(target)}", inner["pos"])
+                elif operator == '&&':
+                    return bool(a and b)
+
+                elif operator == '||':
+                    return bool(a or b)
+
+            def run_function_call(_target, _args):
+                if not isinstance(_target, func):
+                    print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
+
+                elif len(_target.arguments) != len(_args):
+                    print_error(f"ArgumentError: function expected {len(_target.arguments)} argument{'' if len(_target.arguments) == 1 else 's'}, got {len(_args)}", inner["pos"])
+
+                for n, a in enumerate(_target.arguments):
+                    variables[a] = _args[n]
+
+                _ret: Any = run_recursive(["functions", _target.index])
+                return _ret[-1] if _ret else null
+
+            def concatenate_fragments(fragments: list, fragments_scope: list):
+                c = ""
+                for n, frag in enumerate(fragments):
+                    if isinstance(frag, str):
+                        c += frag
                     else:
-                        for v in target:
-                            if not isinstance(v, int):
-                                print_error(f"TypeError: expected int for range values, found type '{v.__class__.__name__}'", inner["pos"])
-                        if len(target) == 3 and target[2] == 0:
-                            print_error(f"ValueError: third value for range cannot be zero", inner["pos"])
-                        return list(range(*target))
-                else:
-                    print_error(f"TypeError: expected int or list of ints for range, found type '{target.__class__.__name__}'", inner["pos"])
+                        val = run_recursive(scope + [*fragments_scope, n])
+                        c += _str(val[-1] if val else null)
 
-            elif op == '^^':
-                if isinstance(target, (str, list)):
-                    return list(enumerate(target))
-                else:
-                    print_error(f"TypeError: expected str or list for enumerating, found type '{target.__class__.__name__}'", inner["pos"])
+                return c
 
-            elif op == '#':
-                if isinstance(target, (float, int)):
-                    return abs(target)
-                else:
-                    print_error(f"TypeError: expected a number for absolute value, found type '{target.__class__.__name__}'", inner["pos"])
+            inner: dict = ast
+            for s in scope:
+                inner = inner[s]
 
-            elif op == '!':
-                return not target
+            if isinstance(inner, list):
+                ret = []
 
-            elif op == '\'':
-                if isinstance(target, int):
-                    if target > 1114111 or target < 0:
-                        print_error(f"ValueError: char must be <= 1114111 and >= 0, found {target}", inner["pos"])
-                    return chr(target)
-                elif isinstance(target, str):
-                    if len(target) != 1:
-                        print_error(f"ValueError: expected string with 1 character, found {len(target)} characters", inner["pos"])
-                    return ord(target)
-                else:
-                    print_error(f"TypeError: cannot use char operator on type '{target.__class__.__name__}'", inner["pos"])
+                for i in range(len(inner)):
+                    r = run_recursive(scope + [i])
 
-            elif op in ('.', '`'):
-                if isinstance(target, str):
-                    return target.lower() if op == '.' else target.upper()
-                else:
-                    print_error(f"TypeError: expected str for case conversion, found type '{target.__class__.__name__}'", inner["pos"])
-
-            elif op in ('..', '``'):
-                if isinstance(target, str):
-                    return target.islower() if op == '..' else target.isupper()
-                else:
-                    print_error(f"TypeError: expected str for case check, found type '{target.__class__.__name__}'", inner["pos"])
-
-            elif op in '?':
-                return bool(target)
-
-        # After operators
-        elif inner["type"] == "after operator":
-            op = inner["operator"]
-            target = run_recursive(scope + ["target"])
-
-            if op == '$':
-                if isinstance(target, list):
-                    return list(map(to_num, target))
-                return to_num(target)
-
-            elif op == '`':
-                if isinstance(target, list):
-                    return list(map(_str, target))
-                return _str(target)
-
-            elif op == '^^':
-                if isinstance(target, (str, list)):
-                    return "".join(map(_str, target))
-                else:
-                    print_error(f"TypeError: expected str or list for join, found type '{target.__class__.__name__}'", inner["pos"])
-
-            elif op == '##':
-                if isinstance(target, str):
-                    return target.split()
-                else:
-                    print_error(f"TypeError: expected str for split, found type '{target.__class__.__name__}'", inner["pos"])
-
-            elif op == '#$':
-                if isinstance(target, str):
-                    return list(map(to_num, target))
-                else:
-                    print_error(f"TypeError: expected str for split, found type '{target.__class__.__name__}'", inner["pos"])
-
-            elif op == '\'':
-                if isinstance(target, (float, int)):
-                    return round(target)
-                else:
-                    print_error(f"TypeError: expected a number for rounding, found type '{target.__class__.__name__}'", inner["pos"])
-
-            elif op == '_':
-                if isinstance(target, (str, list)):
-                    return len(target)
-                else:
-                    return len(_str(target))
-
-            elif op in ('``', '$$', '@@'):
-                if isinstance(target, str):
-                    if op == '``':
-                        return target.isalpha()
-                    elif op == '$$':
-                        return target.isdecimal()
-                    elif op == '@@':
-                        return target.isalnum()
-                else:
-                    print_error(f"TypeError: expected str for character check, found type '{target.__class__.__name__}'", inner["pos"])
-
-        # Binary operators
-        elif inner["type"] == "binary operator":
-            return run_binary_operator(run_recursive(scope + ["a"]), inner["operator"], run_recursive(scope + ["b"]))
-
-        # Increment (++ and --)
-        elif inner["type"] == "increment":
-            var = variables[inner["id"]]
-            if isinstance(var, int):
-                d = 1 if inner["mode"] == "add" else -1
-                if inner["position"] == "before":
-                    var += d
-                    variables[inner["id"]] = var
-                    return var
-                elif inner["position"] == "after":
-                    variables[inner["id"]] += d
-                    return var
-            else:
-                print_error(f"TypeError: cannot increment type '{var.__class__.__name__}'", inner["pos"])
-
-        # Functions
-        elif inner["type"] == "function":
-            return func(inner["index"], inner["arguments"])
-
-        # Function calls
-        elif inner["type"] == "call":
-            return run_function_call(run_recursive(scope + ["target"]), run_recursive(scope + ["args"]))
-
-        # Parentheses (in expressions)
-        elif inner["type"] == "group":
-            args = run_recursive(scope + ["inner"])
-            return args
-
-        # Blocks (as values)
-        elif inner["type"] == "block":
-            args = run_recursive(scope + ["statements"])
-            return args[-1] if args else null
-
-        # Lists
-        elif inner["type"] == "list":
-            args = run_recursive(scope + ["values"])
-            return args
-
-        # Indexing
-        elif inner["type"] == "index":
-            target = run_recursive(scope + ["target"])
-            index = run_recursive(scope + ["index"])
-
-            if not isinstance(index, int):
-                print_error(f"TypeError: expected int for index, found type '{index.__class__.__name__}'", inner["pos"])
-
-            try:
-                return target[index]
-            except IndexError:
-                print_error(f"IndexError: index out of range (index: {index}, length: {len(target)})", inner["pos"])
-            except TypeError:
-                print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
-
-        # Slicing
-        elif inner["type"] == "slice":
-            target = run_recursive(scope + ["target"])
-            values: list = run_recursive(scope + ["values"])  # i thought pycharm was smart why do i need typehinting here
-
-            for i, v in enumerate(values):
-                if not isinstance(v, int) and v is not null:
-                    print_error(f"TypeError: expected int for slice, found type '{v.__class__.__name__}'", inner["pos"])
-
-                if v is null:
-                    values[i] = None
-
-            try:
-                return target[slice(*values)]
-            except TypeError:
-                print_error(f"TypeError: cannot slice type '{target.__class__.__name__}'", inner["pos"])
-
-        # Get index of element in list
-        elif inner["type"] == "index of":
-            target = run_recursive(scope + ["target"])
-            value = run_recursive(scope + ["value"])
-
-            if isinstance(target, str) and not isinstance(value, str):
-                print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
-
-            try:
-                return target.index(value)
-            except AttributeError:
-                print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
-            except ValueError:
-                return -1
-
-        # Check if element is in list
-        elif inner["type"] == "contains":
-            target = run_recursive(scope + ["target"])
-            value = run_recursive(scope + ["value"])
-
-            if isinstance(target, str) and not isinstance(value, str):
-                print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
-
-            try:
-                return value in target
-            except AttributeError:
-                print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
-
-        # Count occurences of element in list
-        elif inner["type"] == "count":
-            target = run_recursive(scope + ["target"])
-            value = run_recursive(scope + ["value"])
-
-            if isinstance(target, str) and not isinstance(value, str):
-                print_error(f"TypeError: expected str for count in str, found type '{value.__class__.__name__}'", inner["pos"])
-
-            try:
-                return target.count(value)
-            except AttributeError:
-                print_error(f"TypeError: cannot count in type '{target.__class__.__name__}'", inner["pos"])
-
-        # For loop
-        elif inner["type"] == "for loop":
-            lst = run_recursive(scope + ["list"])
-            if isinstance(lst, int):
-                lst = list(map(int, str(lst)))
-            elif not isinstance(lst, (str, list)):
-                print_error(f"TypeError: cannot iterate over type '{lst.__class__.__name__}'", inner["pos"])
-
-            _vars = inner["vars"]
-            return_values = []
-
-            for v in lst:
-                if _vars is not None:
-                    if _vars["type"] == "list":
-                        if len(_vars["values"]) > len(v):
-                            print_error(f"ValueError: not enough values to unpack (targets: {len(_vars['values'])}, values: {len(v)})", inner["pos"])
-
-                        elif len(_vars["values"]) < len(v):
-                            print_error(f"ValueError: too many values to unpack (targets: {len(_vars['values'])}, values: {len(v)})", inner["pos"])
-
-                        for i, _v in enumerate(_vars["values"]):
-                            variables[_v["id"]] = v[i]
-
-                    else:
-                        variables[_vars["id"]] = v
-
-                ret: list[Any] = run_recursive(scope + ["statements"])
-                if ret:
-                    if ret[-1] is Keyword.BREAK:
-                        if ret[-1].expr is not null:
-                            return_values.append(ret[-1].expr)
+                    if r in (Keyword.RETURN, Keyword.CONTINUE):
+                        ret.append(r.expr)
                         break
 
-                    elif ret[-1] is not null:
-                        return_values.append(ret[-1])
-
-            return return_values
-
-        # While loop
-        elif inner["type"] == "while loop":
-            return_values = []
-
-            while run_recursive(scope + ["condition"]):
-                ret = run_recursive(scope + ["statements"])
-                if ret:
-                    if ret[-1] is Keyword.BREAK:
-                        if ret[-1].expr is not null:
-                            return_values.append(ret[-1].expr)
+                    if r is Keyword.BREAK:
+                        ret.append(r)
                         break
 
-                    elif ret[-1] is not null:
-                        return_values.append(ret[-1])
+                    ret.append(r)
 
-            return return_values
-
-        # If statement
-        elif inner["type"] == "if":
-            ret = run_recursive(scope + ["true" if run_recursive(scope + ["condition"]) else "false"])
-            return ret[-1] if ret else null
-
-        # x{...} syntax
-        elif inner["type"] == "brace syntax":
-            op = inner["op"]
-
-            target = run_recursive(scope + ["target"])
-
-            if isinstance(target, int):
-                target = list(map(int, str(target)))
-
-            elif not isinstance(target, (str, list)):
-                print_error(f"TypeError: cannot iterate over type '{target.__class__.__name__}'", inner["pos"])
-
-            elif len(target) == 0:
-                print_error(f"ValueError: brace syntax iterable must have at least one value", inner["pos"])
-
-            key = run_recursive(scope + ["key"])
-
-            if not isinstance(key, func) and key is not null:
-                print_error(f"TypeError: expected a function, found type '{key.__class__.__name__}'", inner["pos"])
-
-            if key is not null:
-                compare = list(map(lambda x: run_function_call(key, [x]), target))
-            else:
-                compare = target
-
-            if op == '<':
-                return list(sorted(target, key=lambda x: compare[target.index(x)]))
-
-            elif op == '>':
-                return list(sorted(target, key=lambda x: compare[target.index(x)], reverse=True))
-
-            elif op == '.':
-                return min(target, key=lambda x: compare[target.index(x)])
-
-            elif op == '^':
-                return max(target, key=lambda x: compare[target.index(x)])
-
-            elif op == '=':
-                return len(set(compare)) == 1
-
-            elif op == '!':
-                return len(set(compare)) == len(compare)
-
-            else:
-                ret = compare[0]
-                for v in compare[1:]:
-                    ret = run_binary_operator(ret, op, v)
                 return ret
 
-        # Strings
-        elif inner["type"] == "string":
-            return concatenate_fragments(inner["fragments"], ["fragments"])
+            elif inner is None or not inner.get("type"):
+                return default_return_value
 
-        # Replacing
-        elif inner["type"] == "replace":
-            target = run_recursive(scope + ["target"])
-            if not isinstance(target, str):
-                print_error(f"TypeError: cannot use replace on type '{target.__class__.__name__}'", inner["pos"])
+            # Input statements
+            elif inner["type"] == "input":
+                mode = inner["mode"]
+                prompt = run_recursive(scope + ["prompt"])
+                prompt = "" if prompt is null else prompt
 
-            for i, (left, right) in enumerate(inner["pairs"]):
-                left = concatenate_fragments(left, ["pairs", i, 0])
-                right = concatenate_fragments(right, ["pairs", i, 1])
+                if SHELL:
+                    prompt = GREEN + prompt + RESET
 
-                if inner["mode"] == "normal":
-                    target = target.replace(left, right)
+                _input = input(prompt)
 
-                elif inner["mode"] == "swap":
-                    target = right.join(left.join(x.split(right)) for x in target.split(left))
+                if mode == "string":
+                    return _input
 
-                elif inner["mode"] == "first":
-                    target = target.replace(left, right, 1)
+                elif mode == "number":
+                    return to_num(_input)
 
-                elif inner["mode"] == "last":
-                    target = right.join(target.rsplit(left, 1))
+                elif mode == "split number":
+                    return list(map(to_num, _input.split()))
 
-            return target
+            # Print statements
+            elif inner["type"] == "print":
+                mode = inner["mode"]
+                args = run_recursive(scope + ["args"], default_return_value="")
 
-        # Ints, floats etc.
-        elif inner["type"] == "literal":
-            return inner["value"]
+                output = ""
 
-        return null
+                if mode == "normal":
+                    if isinstance(args, list):
+                        output = "".join(map(_str, args))
+                    else:
+                        output = _str(args)
 
-    try:
+                elif mode == "spaces":
+                    if isinstance(args, list):
+                        output = " ".join(map(_str, args))
+                    elif not isinstance(args, str):
+                        output = " ".join(_str(args))
+                    else:
+                        output = " ".join(args)
+
+                if SHELL:
+                    print(GREEN + output + RESET)
+                else:
+                    print(output)
+                return output
+
+            # Keywords
+            elif inner["type"] == "keyword":
+                name = inner["name"]
+
+                if name == "true":
+                    return True
+                elif name == "false":
+                    return False
+                elif name == "null":
+                    return null
+                elif name == "return":
+                    return Keyword.RETURN(run_recursive(scope + ["value"]))
+                elif name == "break":
+                    return Keyword.BREAK(run_recursive(scope + ["value"]))
+                elif name == "continue":
+                    return Keyword.CONTINUE(run_recursive(scope + ["value"]))
+                elif name == "exit":
+                    exit()
+
+            # Get variable
+            elif inner["type"] == "get":
+                name = inner["id"]
+                if name in variables:
+                    return variables[name]
+                else:
+                    print_error(f"UndefinedError: variable '{name}' is not defined", inner["pos"])
+
+            # Set variable
+            elif inner["type"] == "set":
+                name = inner["id"]
+                args = run_recursive(scope + ["args"])
+
+                variables[name] = args
+                return variables[name]
+
+            # Set list index
+            elif inner["type"] == "set index":
+                target = run_recursive(scope + ["target"])
+                index = run_recursive(scope + ["index"])
+                args = run_recursive(scope + ["args"])
+
+                try:
+                    target[index] = args
+                    return target[index]
+                except TypeError:
+                    print_error(f"TypeError: cannot assign index of type '{target.__class__.__name__}'", inner["pos"])
+
+            # Unpacking
+            elif inner["type"] == "set multiple":
+                values = run_recursive(scope + ["values"])
+
+                if not isinstance(values, (str, list)):
+                    print_error(f"TypeError: cannot unpack type '{values.__class__.__name__}'", inner["pos"])
+
+                elif len(inner["targets"]) > len(values):
+                    print_error(f"ValueError: not enough values to unpack (targets: {len(inner['targets'])}, values: {len(values)})", inner["pos"])
+
+                elif len(inner["targets"]) < len(values):
+                    print_error(f"ValueError: too many values to unpack (targets: {len(inner['targets'])}, values: {len(values)})", inner["pos"])
+
+                return_values = []
+
+                for i, v in enumerate(inner["targets"]):
+                    # Set variable
+                    if v.get("type") == "get":
+                        name = v["id"]
+                        variables[name] = values[i]
+                        return_values.append(variables[name])
+
+                    # Set list index
+                    elif v.get("type") == "index":
+                        target = run_recursive(scope + ["targets", i, "target"])
+                        index = run_recursive(scope + ["targets", i, "index"])
+
+                        try:
+                            target[index] = values[i]
+                            return_values.append(target[index])
+                        except TypeError:
+                            print_error(f"TypeError: cannot assign index of type '{target.__class__.__name__}'", inner["pos"])
+
+                return return_values
+
+            # Unary operators
+            elif inner["type"] == "unary operator":
+                op = inner["operator"]
+                target = run_recursive(scope + ["target"])
+
+                if op == '-':
+                    if isinstance(target, (float, int)):
+                        return -target
+                    else:
+                        print_error(f"TypeError: expected a number for unary minus, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '@':
+                    if isinstance(target, bool):
+                        return "".join(reversed(_str(target)))
+                    elif isinstance(target, (int, float)):
+                        if target >= 0:
+                            return to_num("".join(reversed(str(target))))
+                        return -to_num("".join(reversed(str(-target))))
+                    elif isinstance(target, str):
+                        return "".join(reversed(target))
+                    elif isinstance(target, list):
+                        return list(reversed(target))
+                    else:
+                        print_error(f"TypeError: cannot use reverse operator on type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '^':
+                    if isinstance(target, int):
+                        return list(range(target))
+                    elif isinstance(target, list):
+                        if len(target) > 3:
+                            print_error(f"TypeError: expected at most 3 values for range, found {len(target)}", inner["pos"])
+                        elif len(target) < 1:
+                            print_error(f"TypeError: expected at least 1 value for range, found {len(target)}", inner["pos"])
+                        else:
+                            for v in target:
+                                if not isinstance(v, int):
+                                    print_error(f"TypeError: expected int for range values, found type '{v.__class__.__name__}'", inner["pos"])
+                            if len(target) == 3 and target[2] == 0:
+                                print_error(f"ValueError: third value for range cannot be zero", inner["pos"])
+                            return list(range(*target))
+                    else:
+                        print_error(f"TypeError: expected int or list of ints for range, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '^^':
+                    if isinstance(target, (str, list)):
+                        return list(enumerate(target))
+                    else:
+                        print_error(f"TypeError: expected str or list for enumerating, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '#':
+                    if isinstance(target, (float, int)):
+                        return abs(target)
+                    else:
+                        print_error(f"TypeError: expected a number for absolute value, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '!':
+                    return not target
+
+                elif op == '\'':
+                    if isinstance(target, int):
+                        if target > 1114111 or target < 0:
+                            print_error(f"ValueError: char must be <= 1114111 and >= 0, found {target}", inner["pos"])
+                        return chr(target)
+                    elif isinstance(target, str):
+                        if len(target) != 1:
+                            print_error(f"ValueError: expected string with 1 character, found {len(target)} characters", inner["pos"])
+                        return ord(target)
+                    else:
+                        print_error(f"TypeError: cannot use char operator on type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op in ('.', '`'):
+                    if isinstance(target, str):
+                        return target.lower() if op == '.' else target.upper()
+                    else:
+                        print_error(f"TypeError: expected str for case conversion, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op in ('..', '``'):
+                    if isinstance(target, str):
+                        return target.islower() if op == '..' else target.isupper()
+                    else:
+                        print_error(f"TypeError: expected str for case check, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op in '?':
+                    return bool(target)
+
+            # After operators
+            elif inner["type"] == "after operator":
+                op = inner["operator"]
+                target = run_recursive(scope + ["target"])
+
+                if op == '$':
+                    if isinstance(target, list):
+                        return list(map(to_num, target))
+                    return to_num(target)
+
+                elif op == '`':
+                    if isinstance(target, list):
+                        return list(map(_str, target))
+                    return _str(target)
+
+                elif op == '^^':
+                    if isinstance(target, (str, list)):
+                        return "".join(map(_str, target))
+                    else:
+                        print_error(f"TypeError: expected str or list for join, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '##':
+                    if isinstance(target, str):
+                        return target.split()
+                    else:
+                        print_error(f"TypeError: expected str for split, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '#$':
+                    if isinstance(target, str):
+                        return list(map(to_num, target))
+                    else:
+                        print_error(f"TypeError: expected str for split, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '\'':
+                    if isinstance(target, (float, int)):
+                        return round(target)
+                    else:
+                        print_error(f"TypeError: expected a number for rounding, found type '{target.__class__.__name__}'", inner["pos"])
+
+                elif op == '_':
+                    if isinstance(target, (str, list)):
+                        return len(target)
+                    else:
+                        return len(_str(target))
+
+                elif op in ('``', '$$', '@@'):
+                    if isinstance(target, str):
+                        if op == '``':
+                            return target.isalpha()
+                        elif op == '$$':
+                            return target.isdecimal()
+                        elif op == '@@':
+                            return target.isalnum()
+                    else:
+                        print_error(f"TypeError: expected str for character check, found type '{target.__class__.__name__}'", inner["pos"])
+
+            # Binary operators
+            elif inner["type"] == "binary operator":
+                return run_binary_operator(run_recursive(scope + ["a"]), inner["operator"], run_recursive(scope + ["b"]))
+
+            # Increment (++ and --)
+            elif inner["type"] == "increment":
+                var = variables[inner["id"]]
+                if isinstance(var, int):
+                    d = 1 if inner["mode"] == "add" else -1
+                    if inner["position"] == "before":
+                        var += d
+                        variables[inner["id"]] = var
+                        return var
+                    elif inner["position"] == "after":
+                        variables[inner["id"]] += d
+                        return var
+                else:
+                    print_error(f"TypeError: cannot increment type '{var.__class__.__name__}'", inner["pos"])
+
+            # Functions
+            elif inner["type"] == "function":
+                return func(inner["index"], inner["arguments"])
+
+            # Function calls
+            elif inner["type"] == "call":
+                return run_function_call(run_recursive(scope + ["target"]), run_recursive(scope + ["args"]))
+
+            # Parentheses (in expressions)
+            elif inner["type"] == "group":
+                args = run_recursive(scope + ["inner"])
+                return args
+
+            # Blocks (as values)
+            elif inner["type"] == "block":
+                args = run_recursive(scope + ["statements"])
+                return args[-1] if args else null
+
+            # Lists
+            elif inner["type"] == "list":
+                args = run_recursive(scope + ["values"])
+                return args
+
+            # Indexing
+            elif inner["type"] == "index":
+                target = run_recursive(scope + ["target"])
+                index = run_recursive(scope + ["index"])
+
+                if not isinstance(index, int):
+                    print_error(f"TypeError: expected int for index, found type '{index.__class__.__name__}'", inner["pos"])
+
+                try:
+                    return target[index]
+                except IndexError:
+                    print_error(f"IndexError: index out of range (index: {index}, length: {len(target)})", inner["pos"])
+                except TypeError:
+                    print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
+
+            # Slicing
+            elif inner["type"] == "slice":
+                target = run_recursive(scope + ["target"])
+                values: list = run_recursive(scope + ["values"])  # i thought pycharm was smart why do i need typehinting here
+
+                for i, v in enumerate(values):
+                    if not isinstance(v, int) and v is not null:
+                        print_error(f"TypeError: expected int for slice, found type '{v.__class__.__name__}'", inner["pos"])
+
+                    if v is null:
+                        values[i] = None
+
+                try:
+                    return target[slice(*values)]
+                except TypeError:
+                    print_error(f"TypeError: cannot slice type '{target.__class__.__name__}'", inner["pos"])
+
+            # Get index of element in list
+            elif inner["type"] == "index of":
+                target = run_recursive(scope + ["target"])
+                value = run_recursive(scope + ["value"])
+
+                if isinstance(target, str) and not isinstance(value, str):
+                    print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
+
+                try:
+                    return target.index(value)
+                except AttributeError:
+                    print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
+                except ValueError:
+                    return -1
+
+            # Check if element is in list
+            elif inner["type"] == "contains":
+                target = run_recursive(scope + ["target"])
+                value = run_recursive(scope + ["value"])
+
+                if isinstance(target, str) and not isinstance(value, str):
+                    print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
+
+                try:
+                    return value in target
+                except AttributeError:
+                    print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
+
+            # Count occurences of element in list
+            elif inner["type"] == "count":
+                target = run_recursive(scope + ["target"])
+                value = run_recursive(scope + ["value"])
+
+                if isinstance(target, str) and not isinstance(value, str):
+                    print_error(f"TypeError: expected str for count in str, found type '{value.__class__.__name__}'", inner["pos"])
+
+                try:
+                    return target.count(value)
+                except AttributeError:
+                    print_error(f"TypeError: cannot count in type '{target.__class__.__name__}'", inner["pos"])
+
+            # For loop
+            elif inner["type"] == "for loop":
+                lst = run_recursive(scope + ["list"])
+                if isinstance(lst, int):
+                    lst = list(map(int, str(lst)))
+                elif not isinstance(lst, (str, list)):
+                    print_error(f"TypeError: cannot iterate over type '{lst.__class__.__name__}'", inner["pos"])
+
+                _vars = inner["vars"]
+                return_values = []
+
+                for v in lst:
+                    if _vars is not None:
+                        if _vars["type"] == "list":
+                            if len(_vars["values"]) > len(v):
+                                print_error(f"ValueError: not enough values to unpack (targets: {len(_vars['values'])}, values: {len(v)})", inner["pos"])
+
+                            elif len(_vars["values"]) < len(v):
+                                print_error(f"ValueError: too many values to unpack (targets: {len(_vars['values'])}, values: {len(v)})", inner["pos"])
+
+                            for i, _v in enumerate(_vars["values"]):
+                                variables[_v["id"]] = v[i]
+
+                        else:
+                            variables[_vars["id"]] = v
+
+                    ret: list[Any] = run_recursive(scope + ["statements"])
+                    if ret:
+                        if ret[-1] is Keyword.BREAK:
+                            if ret[-1].expr is not null:
+                                return_values.append(ret[-1].expr)
+                            break
+
+                        elif ret[-1] is not null:
+                            return_values.append(ret[-1])
+
+                return return_values
+
+            # While loop
+            elif inner["type"] == "while loop":
+                return_values = []
+
+                while run_recursive(scope + ["condition"]):
+                    ret = run_recursive(scope + ["statements"])
+                    if ret:
+                        if ret[-1] is Keyword.BREAK:
+                            if ret[-1].expr is not null:
+                                return_values.append(ret[-1].expr)
+                            break
+
+                        elif ret[-1] is not null:
+                            return_values.append(ret[-1])
+
+                return return_values
+
+            # If statement
+            elif inner["type"] == "if":
+                ret = run_recursive(scope + ["true" if run_recursive(scope + ["condition"]) else "false"])
+                return ret[-1] if ret else null
+
+            # x{...} syntax
+            elif inner["type"] == "brace syntax":
+                op = inner["op"]
+
+                target = run_recursive(scope + ["target"])
+
+                if isinstance(target, int):
+                    target = list(map(int, str(target)))
+
+                elif not isinstance(target, (str, list)):
+                    print_error(f"TypeError: cannot iterate over type '{target.__class__.__name__}'", inner["pos"])
+
+                elif len(target) == 0:
+                    print_error(f"ValueError: brace syntax iterable must have at least one value", inner["pos"])
+
+                key = run_recursive(scope + ["key"])
+
+                if not isinstance(key, func) and key is not null:
+                    print_error(f"TypeError: expected a function, found type '{key.__class__.__name__}'", inner["pos"])
+
+                if key is not null:
+                    compare = list(map(lambda x: run_function_call(key, [x]), target))
+                else:
+                    compare = target
+
+                if op == '<':
+                    return list(sorted(target, key=lambda x: compare[target.index(x)]))
+
+                elif op == '>':
+                    return list(sorted(target, key=lambda x: compare[target.index(x)], reverse=True))
+
+                elif op == '.':
+                    return min(target, key=lambda x: compare[target.index(x)])
+
+                elif op == '^':
+                    return max(target, key=lambda x: compare[target.index(x)])
+
+                elif op == '=':
+                    return len(set(compare)) == 1
+
+                elif op == '!':
+                    return len(set(compare)) == len(compare)
+
+                else:
+                    ret = compare[0]
+                    for v in compare[1:]:
+                        ret = run_binary_operator(ret, op, v)
+                    return ret
+
+            # Strings
+            elif inner["type"] == "string":
+                return concatenate_fragments(inner["fragments"], ["fragments"])
+
+            # Replacing
+            elif inner["type"] == "replace":
+                target = run_recursive(scope + ["target"])
+                if not isinstance(target, str):
+                    print_error(f"TypeError: cannot use replace on type '{target.__class__.__name__}'", inner["pos"])
+
+                for i, (left, right) in enumerate(inner["pairs"]):
+                    left = concatenate_fragments(left, ["pairs", i, 0])
+                    right = concatenate_fragments(right, ["pairs", i, 1])
+
+                    if inner["mode"] == "normal":
+                        target = target.replace(left, right)
+
+                    elif inner["mode"] == "swap":
+                        target = right.join(left.join(x.split(right)) for x in target.split(left))
+
+                    elif inner["mode"] == "first":
+                        target = target.replace(left, right, 1)
+
+                    elif inner["mode"] == "last":
+                        target = right.join(target.rsplit(left, 1))
+
+                return target
+
+            # Ints, floats etc.
+            elif inner["type"] == "literal":
+                return inner["value"]
+
+            return null
+
         if SHELL:
             line_return_value = run_recursive(["statements"])
             if line_return_value and line_return_value[-1] != null:
