@@ -8,9 +8,9 @@ import json
 
 os.system("")  # enables colors
 
+SHELL = False
 DEBUG_MODE = False
-filename = ""
-lines = []
+variables = {}  # all variables are global
 
 after_operators = (  # can't have any of these in binary_operators
     '`', '^^', '##', '#$', '_', '``', '$$', '@@',  # string stuff
@@ -180,56 +180,86 @@ Keyword.CONTINUE = Keyword()
 Keyword.RETURN = Keyword()
 
 
+class ContinueShell(Exception):
+    ...
+
+
 def debug(t):
     if DEBUG_MODE:
         print(f"{Fore.CYAN}[DEBUG] {t}{Style.RESET_ALL}")
 
 
-def print_error(msg: str, pos):
-    global lines
-
-    lines = [_.rstrip("\n") for _ in lines]
-
-    if isinstance(pos, tuple):
-        line, col = pos
-    else:
-        line, col = pos, -1
-
-    dashes = "─" * (5 + max(30, len(max(lines[0 if line - 1 < 1 else line - 1:line + 2], key=len))))
-    max_line = len(str(line if line == len(lines) else line + 1))
-
-    print(Fore.RED, end="")
-    print(f"Error in file {filename}:{line}")
-    print(f"  {'':>{max_line}} ┌" + dashes)
-
-    if line == 2:
-        print(f"  {line - 1:>{max_line}} |   {lines[line - 2]}")
-    elif line > 2:
-        print(f"  {'':>{max_line}} :   ...")
-        print(f"  {line - 1:>{max_line}} :   {lines[line - 2]}")
-
-    print(f"> {line:>{max_line}} │   {lines[line - 1]}")
-    if col != -1:
-        print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
-
-    if line == len(lines) - 1:
-        print(f"  {line + 1:>{max_line}} │   {lines[line]}")
-    if line < len(lines) - 1:
-        print(f"  {line + 1:>{max_line}} :   {lines[line]}")
-        print(f"  {'':>{max_line}} :   ...")
-
-    print(f"  {'':>{max_line}} └" + dashes)
-
-    print(msg.replace("\n", "\\n"))
-    print(Style.RESET_ALL, end="")
-    exit(1)
-
-
-def run(file: str):
-    global filename, lines
-    filename = file
-    with open(file, "r", encoding="utf-8") as f:
+def run_file(filename):
+    with open(filename, "r", encoding="utf-8") as f:
         lines = f.readlines()
+    run(filename, lines)
+
+
+def run(filename, lines):
+
+    def print_error(msg: str, pos):
+        nonlocal lines
+
+        if SHELL:
+            if isinstance(pos, tuple):
+                line, col = pos
+            else:
+                line, col = pos, -1
+
+            line += shell_lines
+
+            dashes = "─" * (5 + max(30, len(lines[0])))
+            max_line = len(str(line))
+
+            print(Fore.RED, end="")
+            print(f"Error in file {filename}:{line}")
+            print(f"  {'':>{max_line}} ┌" + dashes)
+            print(f"> {line:>{max_line}} │   {lines[0]}")
+
+            if col != -1:
+                print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
+
+            print(f"  {'':>{max_line}} └" + dashes)
+            print(msg.replace("\n", "\\n"))
+            print(Style.RESET_ALL, end="")
+            raise ContinueShell
+
+        else:
+            lines = [_.rstrip("\n") for _ in lines]
+
+            if isinstance(pos, tuple):
+                line, col = pos
+            else:
+                line, col = pos, -1
+
+            dashes = "─" * (5 + max(30, len(max(lines[0 if line - 1 < 1 else line - 1:line + 2], key=len))))
+            max_line = len(str(line if line == len(lines) else line + 1))
+
+            print(Fore.RED, end="")
+            print(f"Error in file {filename}:{line}")
+            print(f"  {'':>{max_line}} ┌" + dashes)
+
+            if line == 2:
+                print(f"  {line - 1:>{max_line}} |   {lines[line - 2]}")
+            elif line > 2:
+                print(f"  {'':>{max_line}} :   ...")
+                print(f"  {line - 1:>{max_line}} :   {lines[line - 2]}")
+
+            print(f"> {line:>{max_line}} │   {lines[line - 1]}")
+            if col != -1:
+                print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
+
+            if line == len(lines) - 1:
+                print(f"  {line + 1:>{max_line}} │   {lines[line]}")
+            if line < len(lines) - 1:
+                print(f"  {line + 1:>{max_line}} :   {lines[line]}")
+                print(f"  {'':>{max_line}} :   ...")
+
+            print(f"  {'':>{max_line}} └" + dashes)
+
+            print(msg.replace("\n", "\\n"))
+            print(Style.RESET_ALL, end="")
+            exit(1)
 
     # ---------------------------------------------------- Lexing ---------------------------------------------------- #
     def lex(chars: list[Character]) -> list:
@@ -1002,7 +1032,10 @@ def run(file: str):
 
             elif not optional:
                 if token == Token.none:
-                    print_error(f"SyntaxError: expected a value, found end of file", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
+                    print_error(
+                        f"SyntaxError: expected a value, found end of {'line' if filename == '<shell>' else 'file'}",
+                        (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1)
+                    )
 
                 else:
                     print_error(f"SyntaxError: expected a value, found '{token.value}'", token.pos)
@@ -1316,7 +1349,7 @@ def run(file: str):
                     "key": key
                 }
 
-            elif bm.is_closing():
+            elif bm.is_closing() or token == Token.none:
                 print_error(f"SyntaxError: expected mode specifier", token.pos)
 
             else:
@@ -1340,8 +1373,6 @@ def run(file: str):
             json.dump(ast, f, indent=2)
 
     # --------------------------------------------------- Running --------------------------------------------------- #
-    variables = {}
-
     def run_recursive(scope: list, default_return_value: Any = null):
 
         # Helper functions
@@ -1570,15 +1601,15 @@ def run(file: str):
             return _ret[-1] if _ret else null
 
         def concatenate_fragments(fragments: list, fragments_scope: list):
-            out = ""
+            c = ""
             for n, frag in enumerate(fragments):
                 if isinstance(frag, str):
-                    out += frag
+                    c += frag
                 else:
                     val = run_recursive(scope + [*fragments_scope, n])
-                    out += _str(val[-1] if val else null)
+                    c += _str(val[-1] if val else null)
 
-            return out
+            return c
 
         inner: dict = ast
         for s in scope:
@@ -1611,14 +1642,19 @@ def run(file: str):
             prompt = run_recursive(scope + ["prompt"])
             prompt = "" if prompt is null else prompt
 
+            if SHELL:
+                prompt = Fore.GREEN + prompt + Style.RESET_ALL
+
+            _input = input(prompt)
+
             if mode == "string":
-                return input(prompt)
+                return _input
 
             elif mode == "number":
-                return to_num(input(prompt))
+                return to_num(_input)
 
             elif mode == "split number":
-                return list(map(to_num, input(prompt).split()))
+                return list(map(to_num, _input.split()))
 
         # Print statements
         elif inner["type"] == "print":
@@ -1641,7 +1677,10 @@ def run(file: str):
                 else:
                     output = " ".join(args)
 
-            print(output)
+            if SHELL:
+                print(Fore.GREEN + output + Style.RESET_ALL)
+            else:
+                print(output)
             return output
 
         # Keywords
@@ -2125,7 +2164,15 @@ def run(file: str):
 
         return null
 
-    run_recursive(["statements"])
+    if SHELL:
+        line_return_value = run_recursive(["statements"])
+        if line_return_value and line_return_value[0] != null:
+            out = _str(line_return_value[0])
+            if isinstance(line_return_value[0], str):
+                out = f'"{out}"'
+            print(Fore.CYAN + out + Style.RESET_ALL)
+    else:
+        run_recursive(["statements"])
 
 
 # Command line part
@@ -2141,10 +2188,23 @@ if cliargs.debug:
     DEBUG_MODE = True
 
 if os.path.isfile(cliargs.file):
-    run(cliargs.file)
+    if cliargs.file != "<shell>":
+        run_file(cliargs.file)
+    else:
+        print("cannot run a malb8dge program with name <shell>")
+
 elif os.path.isfile(cliargs.file + ".mlb8"):
-    run(cliargs.file + ".mlb8")
+    run_file(cliargs.file + ".mlb8")
+
 elif cliargs.file:
     print("This file doesn't exist")
+
 else:
-    print("potential future interactive cmd thingy")
+    SHELL = True
+    shell_lines = 0
+    while True:
+        try:
+            run("<shell>", [input(">>> ")])
+        except ContinueShell:
+            pass
+        shell_lines += 1

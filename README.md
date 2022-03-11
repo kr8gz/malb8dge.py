@@ -9,7 +9,9 @@ possible, while still keeping it somewhat easy to read and understand.
 
 ## Running a malb8dge program
 Run `py <location of malb8dge file> <location of .mlb8 file>`
-in the command prompt to run a malb8dge script.
+in the command prompt to run a malb8dge script. Alternatively,
+use `py <location of malb8dge file>`
+to launch the interactive shell.
 
 ## Structure
 
