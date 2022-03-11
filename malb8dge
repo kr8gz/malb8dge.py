@@ -196,6 +196,10 @@ def debug(t):
 
 
 def run_file(filename):
+    global DEBUG_MODE
+    if cliargs.debug:
+        DEBUG_MODE = True
+
     with open(filename, "r", encoding="utf-8") as f:
         lines = f.readlines()
     run(filename, lines)
@@ -1761,7 +1765,7 @@ def run(filename, lines):
 
                     try:
                         target[index] = values[i]
-                        return target[index]
+                        return_values.append(target[index])
                     except TypeError:
                         print_error(f"TypeError: cannot assign index of type '{target.__class__.__name__}'", inner["pos"])
 
@@ -2185,9 +2189,6 @@ cliargsparser = argparse.ArgumentParser(
 cliargsparser.add_argument('file', nargs='?', default="", help="The input file")
 cliargsparser.add_argument('-d', '--debug', action="store_true", help="Whether to run in Debug Mode")
 cliargs = cliargsparser.parse_args()
-
-if cliargs.debug:
-    DEBUG_MODE = True
 
 if os.path.isfile(cliargs.file):
     if cliargs.file != "<shell>":
