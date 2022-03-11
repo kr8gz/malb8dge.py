@@ -598,7 +598,7 @@ def run(filename, lines):
 
             return _tokens
 
-        lexed_tokens = lex(Character.from_lines(lines[-1] if SHELL else lines))  # only care about the last line in shell
+        lexed_tokens = lex(Character.from_lines([lines[-1]] if SHELL else lines))  # only care about the last line in shell
 
         # Debugging information
         if DEBUG_MODE:
