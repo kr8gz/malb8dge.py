@@ -1,12 +1,16 @@
 from itertools import zip_longest
 from typing import Any
-from colorama import Fore, Style
 import argparse
 import os
 import json
 
 
 os.system("")  # enables colors
+RED = "\x1b[0;31m"
+CYAN = "\x1b[0;37m"
+GREEN = "\x1b[0;32m"
+GRAY = "\x1b[0;90m"
+RESET = "\x1b[0;39m"
 
 SHELL = False
 DEBUG_MODE = False
@@ -194,7 +198,7 @@ class ContinueShell(Exception):
 
 def debug(t):
     if DEBUG_MODE:
-        print(f"{Fore.CYAN}[DEBUG] {t}{Style.RESET_ALL}")
+        print(f"{CYAN}[DEBUG] {t}{RESET}")
 
 
 def run_file(filename):
@@ -213,7 +217,7 @@ def run(filename, lines):
         nonlocal lines
 
         if SHELL:
-            print(Fore.RED, end="")
+            print(RED, end="")
 
             if pos is None:
                 print(f"Error in file {filename}")
@@ -239,11 +243,11 @@ def run(filename, lines):
                 print(f"  {'':>{max_line}} └" + dashes)
 
             print(msg.replace("\n", "\\n"))
-            print(Style.RESET_ALL, end="")
+            print(RESET, end="")
             raise ContinueShell
 
         else:
-            print(Fore.RED, end="")
+            print(RED, end="")
 
             if pos is None:
                 print(f"Error in file {filename}")
@@ -281,7 +285,7 @@ def run(filename, lines):
                 print(f"  {'':>{max_line}} └" + dashes)
 
             print(msg.replace("\n", "\\n"))
-            print(Style.RESET_ALL, end="")
+            print(RESET, end="")
             exit(1)
 
     # ---------------------------------------------------- Lexing ---------------------------------------------------- #
@@ -1662,7 +1666,7 @@ def run(filename, lines):
             prompt = "" if prompt is null else prompt
 
             if SHELL:
-                prompt = Fore.GREEN + prompt + Style.RESET_ALL
+                prompt = GREEN + prompt + RESET
 
             _input = input(prompt)
 
@@ -1697,7 +1701,7 @@ def run(filename, lines):
                     output = " ".join(args)
 
             if SHELL:
-                print(Fore.GREEN + output + Style.RESET_ALL)
+                print(GREEN + output + RESET)
             else:
                 print(output)
             return output
@@ -2190,7 +2194,7 @@ def run(filename, lines):
                 out = _str(line_return_value[-1])
                 if isinstance(line_return_value[-1], str):
                     out = f'"{out}"'
-                print(Fore.CYAN + out + Style.RESET_ALL)
+                print(CYAN + out + RESET)
         else:
             run_recursive(["statements"])
 
@@ -2224,7 +2228,7 @@ else:
     shell_lines = 0
     while True:
         try:
-            run("<shell>", [input(Fore.LIGHTBLACK_EX + ">>> " + Style.RESET_ALL)])
+            run("<shell>", [input(GRAY + ">>> " + RESET)])
         except ContinueShell:
             pass
         shell_lines += 1
