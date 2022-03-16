@@ -15,35 +15,43 @@ to launch the interactive shell.
 
 ## Structure
 
-### Values
-Values are the smallest elements in malb8dge. They can be one of the following:
+### Blocks
+Blocks are the biggest element in malb8dge. They consist of multiple statements
+in braces (`{...}`) or a single statement after a colon (`:`) which is sometimes
+optional. On the global level, neither the braces nor the colon are required.
+Blocks always return the value of the last statement, or `null` if the block is
+empty. This means that blocks (with braces) may also be used as values.
 
-* Literals (strings, integers, floats)
-* Lists in brackets
-* Parenthesized expressions
-* Identifiers (variables, true/false, null)
-* Blocks
+Blocks are required for:
 
-Values may be preceded by one or more *before operators* and/or followed by one
-or more of each of the following:
-
-* after operators
-* function calls
-* list indexing
-* "brace syntax"
-* "replace syntax"
-
-They will be explained in more detail later.
+* If-statements (colon optional)
+* While loops (colon optional)
+* For loops
+* Functions (colon optional as the definition of a function already requires a
+  colon)
 
 Examples:
 ```
-;"Hello World!"
-^#-16777216
-(2.718281828 > 3.1415926535)
-`["a", 4, false]^^
-null
-doStuff(x, y // 3, z){^}[0]\the\\_
+add = (x, y): x + y             ### block with one statement, returns x + y
+
+multiply = (x, y): {            ### block start
+    ;"Multiplying {x} by {y}!"
+    x * y                       ### return x * y
+}                               ### block end
+
+3 > 2 ? ;"3 is greater than 2"  ### colon not required for if-statements
 ```
+
+### Statements
+A statement is basically a piece of code that does something. In malb8dge,
+statements are separated by either a newline or a semicolon (`;`) and can be
+one of the following:
+
+* an expression
+* a break statement - `%x` with optional expression x (only in loops)
+* a continue statement - `>x` with optional expression x (only in loops)
+* a return statement - `<x` with optional expression x (only in functions)
+* an exit statement - `%%` (stops the program)
 
 ### Expressions
 An expression is something that can be evaluated to return a value. malb8dge
@@ -88,47 +96,82 @@ input == "yes" ? ;"yay" ! input == "no" ? ;"nay" ! ;"invalid choice"
 ```
 
 ### Loops
-TODO
-
-### Functions
-TODO
-
-### Statements
-A statement is basically a piece of code that does something. In malb8dge,
-statements are separated by either a newline or a semicolon (`;`) and can be
-one of the following:
-
-* an expression
-* a break statement - `%x` with optional expression x (only in loops)
-* a continue statement - `>x` with optional expression x (only in loops)
-* a return statement - `<x` with optional expression x (only in functions)
-* an exit statement - `%%` (stops the program)
-
-### Blocks
-Blocks are the biggest element in malb8dge. They consist of multiple statements
-in braces (`{...}`) or a single statement after a colon (`:`) which is sometimes
-optional. On the global level, neither the braces nor the colon are required.
-Blocks always return the value of the last statement, or `null` if the block is
-empty. This means that blocks (with braces) may also be used as values.
-
-Blocks are required for:
-
-* If-statements (colon optional)
-* While loops (colon optional)
-* For loops
-* Functions (colon optional as the definition of a function already requires a
-  colon)
+Loops are created by adding `~` after an expression. By default, all loops are
+for loops. To create a while loop, add a `?` after the `~`. In a for loop, you
+can specify one or more target variables after the `~`. All loops must have a
+block which will be run on each iteration. Because blocks always return the
+last value, loops can be used to create a list with each of the return values.
 
 Examples:
 ```
-add = (x, y) : x + y            ### block with one statement, returns x + y
+^10 ~ i: ;"The value of i is: " + i  ### simple for loop with a range
+^^"test!" ~ (a, b): ;"{a}: {b}"      ### unpacking an enumeration
+true ~ ? {}                          ### infinite loop
+_ != "yes" ~ ? ;"Will you say yes?"  ### no colon needed
 
-multiply = (x, y) : {           ### block start
-    ;"Multiplying {x} by {y}!"
-    x * y                       ### return x * y
-}                               ### block end
+### Loop → List example
+i = 0
+list = i < 10 ~ ? {
+    ;"The value of i is: " + i
+    i++  ### Add i to the return values and increment it
+}
+;[list]  ### list now contains 0, 1, 2, ..., 10
 
-3 > 2 ? ;"3 is greater than 2"  ### colon not required for if-statements
+### Using return values of a for loop to map an iterable
+abc = "abcdefghijklmnopqrstuvwxyz"
+;_ ~ char: abc[abc[@char] + 13 % 26]  ### ROT13 on input
+```
+
+### Functions
+Functions are defined by providing a list of arguments, followed by a colon and
+a block.
+
+Examples:
+```
+add = (x, y): x + y           ### function with 2 arguments
+double = x: x * 2             ### function with 1 argument - no parentheses needed
+doStuff = : ;"doing stuff"    ### function with no arguments
+
+longerStuff = : {             ### the colon is needed to be able to tell it
+    ;"doing stuff"            ### apart from a normal block
+    ;"doing more stuff"
+}
+
+### Additional info
+add = x, y: x + y             ### will be grouped as (add = x), (y: x + y)
+add = [x, y]: x + y           ### possible, but parentheses are preferred
+double = (x): x * 2           ### add parentheses when they improve readability
+doStuff = (): ;"doing stuff"  ### if you REALLY don't like the : being alone
+```
+
+### Values
+Values are the smallest elements in malb8dge. They can be one of the following:
+
+* Literals (strings, integers, floats)
+* Lists in brackets
+* Parenthesized expressions
+* Identifiers (variables, true/false, null)
+* Blocks
+
+Values may be preceded by one or more *before operators* and/or followed by one
+or more of each of the following:
+
+* after operators
+* function calls
+* list indexing
+* "brace syntax"
+* "replace syntax"
+
+They will be explained in more detail later.
+
+Examples:
+```
+;"Hello World!"
+^#-16777216
+(2.718281828 > 3.1415926535)
+`["a", 4, false]^^
+null
+doStuff(x, y // 3, z){^}[0]\the\\_
 ```
 
 ### Comments
@@ -313,6 +356,7 @@ These functionalities are:
 * `list[+x]` count occurrences of x
 * `list[?x]` check if list contains x
 * `list[@x]` index of x in list
+* TODO SLICING
 
 It is also possible to mix the short form and the standard form. In some cases,
 it is preferable to use the standard form over the short form to avoid unwanted

@@ -47,15 +47,6 @@ operators = after_operators + binary_operators + unary_operators + misc_combined
 
 
 # Helper functions
-def flatten(lst):
-    for x in lst:
-        if hasattr(x, '__iter__') and not isinstance(x, str):
-            for y in flatten(x):
-                yield y
-        else:
-            yield x
-
-
 def _str(x):
     if isinstance(x, bool):
         return str(x).lower()
@@ -235,7 +226,7 @@ def run(filename, lines):
 
                 print(f"Error in file {filename}:{line}")
                 print(f"  {'':>{max_line}} ┌" + dashes)
-                print(f"> {line:>{max_line}} │   {lines[-1]}")
+                print(f"> {line} │   {lines[-1]}")
 
                 if col != -1:
                     print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
@@ -372,9 +363,14 @@ def run(filename, lines):
                     # End replace
                     elif step == 2 and char == "\\" and not braces:
                         if replace_mode == "|" and not pattern and not fragments and not value:
-                            print_error("SyntaxError: replace pattern cannot be empty with swap replace mode", (char.line, char.col))
+                            print_error("SyntaxError: replace pattern cannot be empty with swap replace mode", char.pos)
 
                         finish_value()
+                        if replace_mode == "|" and len(pattern) != len(find_pattern):
+                            print_error("SyntaxError: different amount of values in swap patterns", char.pos)
+                        elif len(pattern) > len(find_pattern):
+                            print_error("SyntaxError: more replace values than find values", char.pos)
+
                         _tokens.append(Token("replace", Replace(list(zip_longest(
                             find_pattern,
                             pattern,
@@ -1399,7 +1395,6 @@ def run(filename, lines):
 
         # -------------------------------------------------- Running ------------------------------------------------- #
         def run_recursive(scope: list, default_return_value: Any = null):
-
             # Helper functions
             def to_num(n):
                 try:
@@ -1623,6 +1618,8 @@ def run(filename, lines):
                     variables[a] = _args[n]
 
                 _ret: Any = run_recursive(["functions", _target.index])
+                if _ret[-1] is Keyword.RETURN:
+                    _ret[-1] = _ret[-1].expr
                 return _ret[-1] if _ret else null
 
             def concatenate_fragments(fragments: list, fragments_scope: list):
@@ -1646,11 +1643,7 @@ def run(filename, lines):
                 for i in range(len(inner)):
                     r = run_recursive(scope + [i])
 
-                    if r in (Keyword.RETURN, Keyword.CONTINUE):
-                        ret.append(r.expr)
-                        break
-
-                    if r is Keyword.BREAK:
+                    if isinstance(r, Keyword):
                         ret.append(r)
                         break
 
@@ -1937,6 +1930,9 @@ def run(filename, lines):
 
             # Increment (++ and --)
             elif inner["type"] == "increment":
+                if inner['id'] not in variables:
+                    print_error(f"UndefinedError: variable '{inner['id']}' is not defined", inner["pos"])
+
                 var = variables[inner["id"]]
                 if isinstance(var, int):
                     d = 1 if inner["mode"] == "add" else -1
@@ -2049,7 +2045,7 @@ def run(filename, lines):
             # For loop
             elif inner["type"] == "for loop":
                 lst = run_recursive(scope + ["list"])
-                if isinstance(lst, int):
+                if isinstance(lst, int) and not isinstance(lst, bool):
                     lst = list(map(int, str(lst)))
                 elif not isinstance(lst, (str, list)):
                     print_error(f"TypeError: cannot iterate over type '{lst.__class__.__name__}'", inner["pos"])
@@ -2074,10 +2070,14 @@ def run(filename, lines):
 
                     ret: list[Any] = run_recursive(scope + ["statements"])
                     if ret:
-                        if ret[-1] is Keyword.BREAK:
+                        if ret[-1] in (Keyword.CONTINUE, Keyword.BREAK):
                             if ret[-1].expr is not null:
                                 return_values.append(ret[-1].expr)
-                            break
+                            if ret[-1] is Keyword.BREAK:
+                                break
+
+                        elif ret[-1] is Keyword.RETURN:
+                            return Keyword.RETURN
 
                         elif ret[-1] is not null:
                             return_values.append(ret[-1])
@@ -2091,10 +2091,14 @@ def run(filename, lines):
                 while run_recursive(scope + ["condition"]):
                     ret = run_recursive(scope + ["statements"])
                     if ret:
-                        if ret[-1] is Keyword.BREAK:
+                        if ret[-1] in (Keyword.CONTINUE, Keyword.BREAK):
                             if ret[-1].expr is not null:
                                 return_values.append(ret[-1].expr)
-                            break
+                            if ret[-1] is Keyword.BREAK:
+                                break
+
+                        elif ret[-1] is Keyword.RETURN:
+                            return Keyword.RETURN
 
                         elif ret[-1] is not null:
                             return_values.append(ret[-1])
@@ -2112,7 +2116,7 @@ def run(filename, lines):
 
                 target = run_recursive(scope + ["target"])
 
-                if isinstance(target, int):
+                if isinstance(target, int) and not isinstance(target, bool):
                     target = list(map(int, str(target)))
 
                 elif not isinstance(target, (str, list)):
@@ -2144,10 +2148,10 @@ def run(filename, lines):
                     return max(target, key=lambda x: compare[target.index(x)])
 
                 elif op == '=':
-                    return len(set(compare)) == 1
+                    return all(x == compare[0] for x in compare)
 
                 elif op == '!':
-                    return len(set(compare)) == len(compare)
+                    return all(x != compare[0] for x in compare[1:])
 
                 else:
                     ret = compare[0]
