@@ -152,7 +152,7 @@ class func:
         self.arguments = arguments
 
     def __repr__(self):
-        return f"<func index={self.index}>"
+        return f"<func({', '.join(self.arguments)}) index={self.index}>"
 
 
 class null:
@@ -588,6 +588,10 @@ def run(filename, lines):
                 elif char.value.isdecimal():
                     prev()
                     lex_number()
+
+                # Stop using tabs for indentation!
+                elif char == "\t":
+                    print_error("SyntaxError: stop using tabs for indentation!", char.pos)
 
                 # Symbol
                 elif char != " ":

@@ -352,11 +352,11 @@ languages. In malb8dge, this standard form is extended to add more
 functionality to reduce the amount of operators which are needed elsewhere.
 
 These functionalities are:
-* `list[x]` normal indexing
-* `list[+x]` count occurrences of x
-* `list[?x]` check if list contains x
-* `list[@x]` index of x in list
-* TODO SLICING
+* `list[x]` - normal indexing
+* `list[+x]` - count occurrences of x
+* `list[?x]` - check if list contains x
+* `list[@x]` - index of x in list
+* `list[start:stop:step]` - slicing (works like in python)
 
 It is also possible to mix the short form and the standard form. In some cases,
 it is preferable to use the standard form over the short form to avoid unwanted
@@ -383,6 +383,13 @@ The different modes are:
 * `<` / `>` - sort ascending / descending
 * `.` / `^` - get minimum / maximum value
 
+Examples:
+```
+${+}                    ### sum of all digits
+_{+x: 'x}               ### sum of all char values of all characters
+list{|x: list[+x] > 1}  ### check if list has any duplicate values
+```
+
 ### Replace syntax
 Replace can only be used on strings. Replacing works in *pairs* which are
 defined in the *patterns*. There are 2 *patterns*: the "find pattern" on the
@@ -390,7 +397,7 @@ left, and the "replace pattern" on the right, which are separated by the mode
 specifier.
 
 There are 4 different replace modes:
-* `\ ` - replace all
+* `\​` - replace all
 * `!` - replace first
 * `@` - replace last
 * `|` - swap
