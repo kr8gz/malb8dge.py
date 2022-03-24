@@ -1360,7 +1360,7 @@ def run(filename, lines):
             def parse_brace_syntax(bm, value) -> dict:
                 _next()
 
-                if token.is_one_of(('+', '-', '*', '/', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^')):
+                if token.is_one_of(('+', '-', '*', '/', '/.', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^')):
                     op = token.value
 
                     _next()
