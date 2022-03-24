@@ -30,7 +30,7 @@ after_operators = (  # can't have any of these in binary_operators
 binary_operators = (  # already sorted by operator precedence
     '*#', '#*', '#', '^',                                          # string stuff
     '@',                                                           # misc stuff
-    '^*', '.*', '**', '/%', '+-', '//', '/', '*', '-', '+', '%',   # arithmetic stuff
+    '^*', '.*', '**', '/%', '+-', '/.', '/', '*', '-', '+', '%',   # arithmetic stuff
     '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',        # logic stuff
 )
 
@@ -51,8 +51,22 @@ def _str(x):
     if isinstance(x, bool):
         return str(x).lower()
     elif isinstance(x, list):
-        return "[" + ", ".join(f'"{y}"' if isinstance(y, str) else _str(y) for y in x) + "]"
+        return "[" + ", ".join(f'"{add_escapes(y)}"' if isinstance(y, str) else _str(y) for y in x) + "]"
     return str(x)
+
+
+def add_escapes(s):
+    new = ""
+    for c in s:
+        if c == "\n":
+            new += "\\n"
+        elif c == "\t":
+            new += "\\t"
+        elif c in "\"\\{}":
+            new += "\\" + c
+        else:
+            new += c
+    return new
 
 
 # Helper classes
@@ -71,9 +85,9 @@ class Character:
         return f"Character(char='{self.value}', {self.line}:{self.col})"
 
     @staticmethod
-    def from_lines(_lines):
+    def from_lines(_lines, line_offset=0):
         return [Character(char, lineno, colno)
-                for lineno, line in [(a + 1, b) for a, b in enumerate(_lines)]
+                for lineno, line in [(a + line_offset + 1, b) for a, b in enumerate(_lines)]
                 for colno, char in [(a + 1, b) for a, b in enumerate(line)]]
 
     @staticmethod
@@ -103,21 +117,7 @@ class String:
         self.fragments = fragments
 
     def __repr__(self):
-        return f'"{"".join(f"{{{f[1]}}}" if f[0] else String.add_escapes(f[1]) for f in self.fragments)}"'
-
-    @staticmethod
-    def add_escapes(s):
-        new = ""
-        for c in s:
-            if c == "\n":
-                new += "\\n"
-            elif c == "\t":
-                new += "\\t"
-            elif c in "\"\\{}":
-                new += "\\" + c
-            else:
-                new += c
-        return new
+        return f'"{"".join(f"{{{f[1]}}}" if f[0] else add_escapes(f[1]) for f in self.fragments)}"'
 
 
 class Token:
@@ -187,16 +187,12 @@ class ContinueShell(Exception):
     ...
 
 
-def debug(t):
+def debug(*args):
     if DEBUG_MODE:
-        print(f"{CYAN}[DEBUG] {t}{RESET}")
+        print(f"{CYAN}[DEBUG] {' '.join(str(a) for a in args)}{RESET}")
 
 
 def run_file(filename):
-    global DEBUG_MODE
-    if cliargs.debug:
-        DEBUG_MODE = True
-
     with open(filename, "r", encoding="utf-8") as f:
         lines = f.readlines()
     run(filename, lines)
@@ -219,14 +215,12 @@ def run(filename, lines):
                 else:
                     line, col = pos, -1
 
-                line += len(shell_lines) - 1
-
-                dashes = "─" * (5 + max(30, len(lines[0])))
+                dashes = "─" * (5 + max(30, len(lines[line - 1])))
                 max_line = len(str(line))
 
                 print(f"Error in file {filename}:{line}")
                 print(f"  {'':>{max_line}} ┌" + dashes)
-                print(f"> {line} │   {lines[-1]}")
+                print(f"> {line} │   {lines[line - 1]}")
 
                 if col != -1:
                     print(f"  {'':>{max_line}} │   {' ' * (col - 1)}^")
@@ -352,9 +346,16 @@ def run(filename, lines):
                     # Escape characters handling
                     if escape:
                         if not braces and char.value in "`\\|!@{},":
-                            value += char.value
+                            to_add = char.value
                         else:
-                            value += "`" + char.value
+                            to_add = "`" + char.value
+
+                        if char_mode:
+                            for c in to_add:
+                                pattern.append([(False, c)])
+                        else:
+                            value += to_add
+
                         escape = False
 
                     elif char == "`":
@@ -600,10 +601,10 @@ def run(filename, lines):
 
             return _tokens
 
-        lexed_tokens = lex(Character.from_lines([lines[-1]] if SHELL else lines))  # only care about the last line in shell
+        lexed_tokens = lex(Character.from_lines([lines[-1]], line_offset=len(lines) - 1) if SHELL else Character.from_lines(lines))
 
         # Debugging information
-        if DEBUG_MODE:
+        if DEBUG_MODE and not SHELL:
             with open(f"{filename}-tokens.txt", "w", encoding="utf-8") as f:
                 f.write("\n".join([f"{_.type:>20} | {_.pos[0]:>2}:{_.pos[1]:<3} | {repr(_.value)}" for _ in lexed_tokens]))
 
@@ -1393,7 +1394,7 @@ def run(filename, lines):
         ast["statements"] = parse(lexed_tokens)
 
         # Debugging information
-        if DEBUG_MODE:
+        if DEBUG_MODE and not SHELL:
             with open(f"{filename}-ast.json", "w") as f:
                 json.dump(ast, f, indent=2)
 
@@ -1499,7 +1500,7 @@ def run(filename, lines):
                     else:
                         print_error(f"TypeError: cannot use +- operator on types '{a.__class__.__name__}' and '{b.__class__.__name__}'", inner["pos"])
 
-                elif operator in '//':
+                elif operator in ('/', '/.'):
                     try:
                         if isinstance(a, (float, int)):
                             if isinstance(b, (float, int)):
@@ -2155,7 +2156,7 @@ def run(filename, lines):
                     return all(x == compare[0] for x in compare)
 
                 elif op == '!':
-                    return all(x != compare[0] for x in compare[1:])
+                    return all(x not in compare[:n] for n, x in enumerate(compare))
 
                 else:
                     ret = compare[0]
@@ -2202,7 +2203,7 @@ def run(filename, lines):
             if line_return_value and line_return_value[-1] != null:
                 out = _str(line_return_value[-1])
                 if isinstance(line_return_value[-1], str):
-                    out = f'"{out}"'
+                    out = f'"{add_escapes(out)}"'
                 print(CYAN + out + RESET)
         else:
             run_recursive(["statements"])
@@ -2219,6 +2220,9 @@ cliargsparser = argparse.ArgumentParser(
 cliargsparser.add_argument('file', nargs='?', default="", help="The input file")
 cliargsparser.add_argument('-d', '--debug', action="store_true", help="Whether to run in Debug Mode")
 cliargs = cliargsparser.parse_args()
+
+if cliargs.debug:
+    DEBUG_MODE = True
 
 if os.path.isfile(cliargs.file):
     if cliargs.file != "<shell>":

@@ -64,7 +64,7 @@ Examples:
 3.1415926535 > 2.718281828
 .._ & ?#$
 x = 6 * y % 7
-z //= 10
+z /.= 10
 /"Hello", "World!"
 ```
 
@@ -171,7 +171,7 @@ Examples:
 (2.718281828 > 3.1415926535)
 `["a", 4, false]^^
 null
-doStuff(x, y // 3, z){^}[0]\the\\_
+doStuff(x, y /. 3, z){^}[0]\the\\_
 ```
 
 ### Comments
@@ -249,9 +249,9 @@ a @ b    ### If a is a string: Convert base b number in string to an int
 a ^* b   ### Return the larger value
 a .* b   ### Return the smaller value
 a ** b   ### Raise a to the power of b
-a /% b   ### Returns [a // b, a % b]
+a /% b   ### Returns [a /. b, a % b]
 a +- b   ### Returns [a + b, a - b]
-a // b   ### Floor division
+a /. b   ### Floor division
 a / b    ### Division
 a * b    ### Multiplication
 a - b    ### Subtraction
@@ -335,7 +335,7 @@ Examples:
 add(3, 4)
 something()
 otherThing(s)
-doStuff(x, y // 3, true)
+doStuff(x, y /. 3, true)
 ```
 
 ### List indexing
@@ -368,7 +368,7 @@ list[0]_  ### will get the length of the first element
 ```
 
 ### Brace syntax
-You can think of brace syntax as a kind of "reduce function". There are 14
+You can think of brace syntax as a kind of "reduce function". There are 15
 different modes to pick from. The syntax is as follows:
 ```
 x{mf}
@@ -377,17 +377,17 @@ where `x` is an iterable, `m` is a character specifying one of the predefined
 modes, and `f` is an optional key function.
 
 The different modes are:
-* normal reduce with any of the following 8 operators:
-  `+`, `-`, `*`, `/`, `&`, `|`, `&&`, `||`
+* normal reduce with any of the following 9 operators:
+  `+`, `-`, `*`, `/`, `/.`, `&`, `|`, `&&`, `||`
 * `=` / `!` - check if all values are equal / different
 * `<` / `>` - sort ascending / descending
 * `.` / `^` - get minimum / maximum value
 
 Examples:
 ```
-${+}                    ### sum of all digits
-_{+x: 'x}               ### sum of all char values of all characters
-list{|x: list[+x] > 1}  ### check if list has any duplicate values
+${*}       ### digit product
+!list{!}   ### check if list has any duplicate values
+_{+x: 'x}  ### sum of all char values of all characters
 ```
 
 ### Replace syntax
