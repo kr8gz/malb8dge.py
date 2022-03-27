@@ -167,22 +167,6 @@ class null:
 null = null()
 
 
-class Keyword:
-    """Key"word" lmao"""
-
-    def __init__(self):
-        self.expr = null
-
-    def __call__(self, expr):
-        self.expr = expr
-        return self
-
-
-Keyword.BREAK = Keyword()
-Keyword.CONTINUE = Keyword()
-Keyword.RETURN = Keyword()
-
-
 class ContinueShell(Exception):
     ...
 
@@ -985,7 +969,7 @@ def run(filename, lines):
                 elif token == '\n':
                     value = parse_value(bm.add())  # try again until there is a value
 
-                elif token == '|':
+                elif token == '~':
                     _next()
                     if token.is_one_of(unary_operators):
                         op = token.value
@@ -1300,24 +1284,28 @@ def run(filename, lines):
                 _next()
 
                 if token == '?':
+                    block = parse_block(bm, needs_colon=False, allow_string_loop=True)
                     return {
                         "type": "while loop",
                         "condition": expr,
-                        "statements": parse_block(bm, needs_colon=False)
+                        "statements": block[0],
+                        "string": block[1]
                     }
 
-                elif token == ':' or token == '{':
+                elif token.is_one_of((':', '|', '{', '[')):
                     prev()
+                    block = parse_block(bm, allow_string_loop=True)
                     return {
                         "type": "for loop",
                         "list": expr,
                         "vars": None,
-                        "statements": parse_block(bm)
+                        "statements": block[0],
+                        "string": block[1]
                     }
 
                 else:
                     prev()
-                    var = ungroup(parse_expression(bm.add(':', '{')))
+                    var = ungroup(parse_expression(bm.add(':', '|', '{', '[')))
                     if var.get("type") == "list":
                         for v in var["values"]:
                             if v.get("type") != "get":
@@ -1326,11 +1314,13 @@ def run(filename, lines):
                     elif var.get("type") != "get":
                         print_error("SyntaxError: invalid target for assignment", token.pos)
 
+                    block = parse_block(bm, allow_string_loop=True)
                     return {
                         "type": "for loop",
                         "list": expr,
                         "vars": var,
-                        "statements": parse_block(bm)
+                        "statements": block[0],
+                        "string": block[1]
                     }
 
             @add_ast_pos
@@ -1352,46 +1342,49 @@ def run(filename, lines):
                     "false": on_false
                 }
 
-            def parse_block(bm, needs_colon=True) -> list[dict]:
+            def parse_block(bm, needs_colon=True, allow_string_loop=False) -> list[dict]:
                 _next()
 
-                if token == ':':
+                if token == ':' or (allow_string_loop and token == '|'):
+                    string_loop = token == '|'
                     statement = parse_statement(bm)
                     if statement.get("type"):
-                        return [statement]
+                        return ([statement], string_loop) if allow_string_loop else [statement]
                     else:
                         print_error("SyntaxError: expected statement", token.pos)
 
-                elif token == '{':
+                elif token == '{' or (allow_string_loop and token == '['):
                     stmts = []
                     bracket_pos = token.pos
+                    string_loop = token == '['
+                    closing = ']' if string_loop else '}'
 
                     while t + 1 < len(tokens):
                         _next()
 
-                        if token == '}':
-                            return stmts
+                        if token == closing:
+                            return (stmts, string_loop) if allow_string_loop else stmts
                         else:
                             prev()
-                            statement = parse_statement(BracketManager(bm, '', '}'))
+                            statement = parse_statement(BracketManager(bm, '', closing))
                             if statement.get("type"):
                                 stmts.append(statement)
 
                     else:
-                        print_error("SyntaxError: missing '}'", bracket_pos)
+                        print_error(f"SyntaxError: missing '{closing}'", bracket_pos)
 
                 elif not needs_colon:
                     prev()
                     statement = parse_statement(bm)
                     if statement.get("type"):
-                        return [statement]
+                        return ([statement], False) if allow_string_loop else [statement]
                     else:
                         print_error("SyntaxError: expected statement", token.pos)
 
                 else:
                     if token == Token.none:
                         print_error(f"SyntaxError: expected statement block", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
-                    print_error(f"SyntaxError: expected ':' or '{{', found '{token.value}'", token.pos)
+                    print_error(f"SyntaxError: expected ':', ';', '[' or '{{', found '{token.value}'", token.pos)
 
             @add_ast_pos
             def parse_brace_syntax(bm, value) -> dict:
@@ -1436,7 +1429,13 @@ def run(filename, lines):
                 json.dump(ast, f, indent=2)
 
         # -------------------------------------------------- Running ------------------------------------------------- #
+        _continue = None
+        _break = None
+        _return = None
+
         def run_recursive(scope: list, default_return_value: Any = null):
+            nonlocal _continue, _break, _return
+
             # Helper functions
             def to_num(n):
                 try:
@@ -1650,6 +1649,8 @@ def run(filename, lines):
                     return bool(a or b)
 
             def run_function_call(_target, _args):
+                nonlocal _return
+
                 if not isinstance(_target, func):
                     print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
 
@@ -1660,8 +1661,10 @@ def run(filename, lines):
                     variables[a] = _args[n]
 
                 _ret: Any = run_recursive(["functions", _target.index])
-                if _ret[-1] is Keyword.RETURN:
-                    _ret[-1] = _ret[-1].expr
+                if _return is not None:
+                    _r = _return
+                    _return = None
+                    return _r
                 return _ret[-1] if _ret else null
 
             def concatenate_fragments(fragments: list, fragments_scope: list):
@@ -1684,9 +1687,7 @@ def run(filename, lines):
 
                 for i in range(len(inner)):
                     r = run_recursive(scope + [i])
-
-                    if isinstance(r, Keyword):
-                        ret.append(r)
+                    if _return is not None or _break is not None or _continue is not None:
                         break
 
                     ret.append(r)
@@ -1754,11 +1755,11 @@ def run(filename, lines):
                 elif name == "null":
                     return null
                 elif name == "return":
-                    return Keyword.RETURN(run_recursive(scope + ["value"]))
+                    _return = run_recursive(scope + ["value"])
                 elif name == "break":
-                    return Keyword.BREAK(run_recursive(scope + ["value"]))
+                    _break = run_recursive(scope + ["value"])
                 elif name == "continue":
-                    return Keyword.CONTINUE(run_recursive(scope + ["value"]))
+                    _continue = run_recursive(scope + ["value"])
                 elif name == "exit":
                     exit()
 
@@ -2088,6 +2089,8 @@ def run(filename, lines):
 
             # For loop
             elif inner["type"] == "for loop":
+                string_loop = inner["string"]
+
                 lst = run_recursive(scope + ["list"])
                 if isinstance(lst, int) and not isinstance(lst, bool):
                     lst = list(map(int, str(lst)))
@@ -2112,42 +2115,52 @@ def run(filename, lines):
                         else:
                             variables[_vars["id"]] = v
 
-                    ret: list[Any] = run_recursive(scope + ["statements"])
-                    if ret:
-                        if ret[-1] in (Keyword.CONTINUE, Keyword.BREAK):
-                            if ret[-1].expr is not null:
-                                return_values.append(ret[-1].expr)
-                            if ret[-1] is Keyword.BREAK:
-                                break
+                    ret = run_recursive(scope + ["statements"])
 
-                        elif ret[-1] is Keyword.RETURN:
-                            return Keyword.RETURN
+                    if _continue is not None:
+                        return_values.append(_continue)
+                        _continue = None
+                        break
 
-                        elif ret[-1] is not null:
-                            return_values.append(ret[-1])
+                    elif _break is not None:
+                        return_values.append(_break)
+                        _break = None
+                        break
 
-                return return_values
+                    elif _return is not None:
+                        return
+
+                    elif ret and ret[-1] is not null:
+                        return_values.append(ret[-1])
+
+                return "".join(map(_str, return_values)) if string_loop else return_values
 
             # While loop
             elif inner["type"] == "while loop":
+                string_loop = inner["string"]
+
                 return_values = []
 
                 while run_recursive(scope + ["condition"]):
                     ret = run_recursive(scope + ["statements"])
-                    if ret:
-                        if ret[-1] in (Keyword.CONTINUE, Keyword.BREAK):
-                            if ret[-1].expr is not null:
-                                return_values.append(ret[-1].expr)
-                            if ret[-1] is Keyword.BREAK:
-                                break
 
-                        elif ret[-1] is Keyword.RETURN:
-                            return Keyword.RETURN
+                    if _continue is not None:
+                        return_values.append(_continue)
+                        _continue = None
+                        break
 
-                        elif ret[-1] is not null:
-                            return_values.append(ret[-1])
+                    elif _break is not None:
+                        return_values.append(_break)
+                        _break = None
+                        break
 
-                return return_values
+                    elif _return is not None:
+                        return
+
+                    elif ret and ret[-1] is not null:
+                        return_values.append(ret[-1])
+
+                return "".join(map(_str, return_values)) if string_loop else return_values
 
             # If statement
             elif inner["type"] == "if":
