@@ -5,12 +5,11 @@ draw = (f, x1, y1, x2, y2): {
 
     ^[maxY, minY - 1, -1] ~ y {
         /(
-            (
-                  y == maxY ? " " * (lpad - maxY_) + maxY
-                ! y == minY ? " " * (lpad - minY_) + minY
-                ! y == 0    ? " " * (lpad - 1) + 0
-                !             " " *  lpad
-            ),
+            [minY, maxY, 0][?y] ? {
+                " " * (lpad - y_) + y
+            } ! {
+                " " * lpad
+            },
             ^[minX, maxX + 1] ~ x {
                 corners = [
                     f(x - 0.5) - (y - 0.5) > 0,

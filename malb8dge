@@ -826,6 +826,25 @@ def run(filename, lines):
                     elif token == '?':
                         expr = parse_if(bm.add(), expr)
 
+                    # binary operators
+                    elif token.is_one_of(binary_operators):
+                        _expr = expr
+
+                        # operator precedence
+                        while _expr["type"] == "binary operator" and binary_operators.index(
+                                token.value) < binary_operators.index(_expr["operator"]):
+                            _expr = _expr["b"]
+
+                        inner = _expr.copy()
+                        _expr.clear()
+                        _expr.update({
+                            "type": "binary operator",
+                            "operator": token.value,
+                            "a": inner,
+                            "b": parse_value(bm.add())
+                        })
+                        set_ast_pos(_expr)
+
                     # normal assignment
                     elif token == '=':
                         expr = ungroup(expr)
@@ -897,25 +916,6 @@ def run(filename, lines):
                             print_error("SyntaxError: invalid target for augmented assignment", tokens[t - 1].pos)
 
                         set_ast_pos(expr["args"])
-
-                    # binary operators
-                    elif token.is_one_of(binary_operators):
-                        _expr = expr
-
-                        # operator precedence
-                        while _expr["type"] == "binary operator" and binary_operators.index(
-                                token.value) < binary_operators.index(_expr["operator"]):
-                            _expr = _expr["b"]
-
-                        inner = _expr.copy()
-                        _expr.clear()
-                        _expr.update({
-                            "type": "binary operator",
-                            "operator": token.value,
-                            "a": inner,
-                            "b": parse_value(bm.add())
-                        })
-                        set_ast_pos(_expr)
 
                     elif token.value == ';' and not bm.bracket:
                         # run through loop again but treat it as a newline to end statement
