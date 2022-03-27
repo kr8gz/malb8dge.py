@@ -23,8 +23,8 @@ ast = {
 variables = {}
 
 after_operators = (  # can't have any of these in binary_operators
-    '`', '^^', '##', '#$', '_', '``', '$$', '@@',  # string stuff
-    '$', '\'',                                     # number stuff
+    '`', '^^', '##', '#$', '_', '``', '$$', '@@', '..',  # string stuff
+    '$', '\'',                                           # number stuff
 )
 
 binary_operators = (  # already sorted by operator precedence
@@ -494,9 +494,9 @@ def run(filename, lines):
 
                 def add_number_token():
                     if floating_point:
-                        _tokens.append(Token("literal", float(value), char.line, char.col - 1))
+                        _tokens.append(Token("literal", float(value), char.line, char.col))
                     else:
-                        _tokens.append(Token("literal", int(value), char.line, char.col - 1))
+                        _tokens.append(Token("literal", int(value), char.line, char.col))
 
                 while t + 1 < len(chars):
 
@@ -548,8 +548,8 @@ def run(filename, lines):
                             not symbol
                             # - or it's a combined symbol that exists in the operators list
                             or symbol + char.value in operators
-                            # - or the current symbol is a binary operator and the character is an equals sign (augmented assignment)
-                            or (symbol in binary_operators and char == '=')
+                            # - or the current symbol is a binary or after operator and the character is an equals sign (augmented assignment)
+                            or (symbol in binary_operators + after_operators and char == '=')
                         )
                     ):
                         symbol += char.value
@@ -842,38 +842,6 @@ def run(filename, lines):
                     elif token == '?':
                         expr = parse_if(bm.add(), expr)
 
-                    # augmented assignment
-                    elif token.type == "symbol" and token.value[-1] == '=' and token.value[:-1] in binary_operators:
-                        if expr.get("type") == "get":
-                            expr = {
-                                "type": "set",
-                                "id": expr["id"],
-                                "args": {
-                                    "type": "binary operator",
-                                    "operator": token.value[:-1],
-                                    "a": expr,
-                                    "b": parse_expression(bm.add())
-                                }
-                            }
-                            set_ast_pos(expr["args"])
-
-                        elif expr.get("type") == "index":
-                            expr = {
-                                "type": "set index",
-                                "target": expr["target"],
-                                "index": expr["index"],
-                                "args": {
-                                    "type": "binary operator",
-                                    "operator": token.value[:-1],
-                                    "a": expr,
-                                    "b": parse_expression(bm.add())
-                                }
-                            }
-                            set_ast_pos(expr["args"])
-
-                        else:
-                            print_error("SyntaxError: invalid target for augmented assignment", tokens[t - 1].pos)
-
                     # normal assignment
                     elif token == '=':
                         expr = ungroup(expr)
@@ -908,6 +876,43 @@ def run(filename, lines):
                             print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
 
                         set_ast_pos(expr)
+
+                    # augmented assignment
+                    elif token.type == "symbol" and token.value[-1] == '=':
+                        if token.value[:-1] in binary_operators:
+                            inner = {
+                                "type": "binary operator",
+                                "operator": token.value[:-1],
+                                "a": expr,
+                                "b": parse_expression(bm.add())
+                            }
+
+                        else:  # should be after operator
+                            inner = {
+                                "type": "after operator",
+                                "operator": token.value[:-1],
+                                "target": expr
+                            }
+
+                        if expr.get("type") == "get":
+                            expr = {
+                                "type": "set",
+                                "id": expr["id"],
+                                "args": inner
+                            }
+
+                        elif expr.get("type") == "index":
+                            expr = {
+                                "type": "set index",
+                                "target": expr["target"],
+                                "index": expr["index"],
+                                "args": inner
+                            }
+
+                        else:
+                            print_error("SyntaxError: invalid target for augmented assignment", tokens[t - 1].pos)
+
+                        set_ast_pos(expr["args"])
 
                     # binary operators
                     elif token.is_one_of(binary_operators):
@@ -979,6 +984,38 @@ def run(filename, lines):
 
                 elif token == '\n':
                     value = parse_value(bm.add())  # try again until there is a value
+
+                elif token == '|':
+                    _next()
+                    if token.is_one_of(unary_operators):
+                        op = token.value
+                        value = parse_value(bm.add())
+                        inner = {
+                            "type": "unary operator",
+                            "operator": op,
+                            "target": value
+                        }
+
+                        if value.get("type") == "get":
+                            value = {
+                                "type": "set",
+                                "id": value["id"],
+                                "args": inner
+                            }
+
+                        elif value.get("type") == "index":
+                            value = {
+                                "type": "set index",
+                                "target": value["target"],
+                                "index": value["index"],
+                                "args": inner
+                            }
+
+                        else:
+                            print_error("SyntaxError: invalid target for augmented assignment", token.pos)
+
+                    else:
+                        print_error(f"SyntaxError: expected a unary operator after '|', found '{token.value}'", token.pos)
 
                 elif token == '(':
                     value = parse_group(BracketManager(bm, ')'))
@@ -1918,7 +1955,7 @@ def run(filename, lines):
                     else:
                         return len(_str(target))
 
-                elif op in ('``', '$$', '@@'):
+                elif op in ('``', '$$', '@@', '..'):
                     if isinstance(target, str):
                         if op == '``':
                             return target.isalpha()
@@ -1926,6 +1963,8 @@ def run(filename, lines):
                             return target.isdecimal()
                         elif op == '@@':
                             return target.isalnum()
+                        elif op == '..':
+                            return target.isspace()
                     else:
                         print_error(f"TypeError: expected str for character check, found type '{target.__class__.__name__}'", inner["pos"])
 
