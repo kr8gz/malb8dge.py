@@ -15,13 +15,6 @@ RESET = "\x1b[0;39m"
 SHELL = False
 DEBUG_MODE = False
 
-# everything is global
-ast = {
-    "statements": [],
-    "functions": []
-}
-variables = {}
-
 after_operators = (  # can't have any of these in binary_operators
     '`', '^^', '##', '#$', '_', '``', '$$', '@@', '..',  # string stuff
     '$', '\'',                                           # number stuff
@@ -51,7 +44,7 @@ def _str(x):
     if isinstance(x, bool):
         return str(x).lower()
     elif isinstance(x, list):
-        return "[" + ", ".join(f'"{add_escapes(y)}"' if isinstance(y, str) else _str(y) for y in x) + "]"
+        return "[" + ", ".join(f'"{add_escapes(y)}"' if isinstance(y, str) else "null" if y is null else _str(y) for y in x) + "]"
     return str(x)
 
 
@@ -1039,10 +1032,14 @@ def run(filename, lines):
                             "id": token.value
                         }
 
-                elif token == ';' or token == '/':
+                elif token.is_one_of((';', '/', '|')):
                     value = {
                         "type": "print",
-                        "mode": "normal" if token == ';' else "spaces",
+                        "mode": {
+                            ";": "normal",
+                            "/": "spaces",
+                            "|": "no newline"
+                        }[token.value],
                         "args": parse_expression(bm.add(), optional=True)
                     }
 
@@ -1421,6 +1418,13 @@ def run(filename, lines):
 
             return statements
 
+        # noinspection PyDictCreation
+        # because parse() changes ast
+        # also typehinting because apparently im not allowed to add stuff to an empty list (thanks pycharm)
+        ast: dict = {
+            "statements": [],
+            "functions": []
+        }
         ast["statements"] = parse(lexed_tokens)
 
         # Debugging information
@@ -1432,6 +1436,8 @@ def run(filename, lines):
         _continue = None
         _break = None
         _return = None
+
+        stack = [{"type": "normal", "variables": {}}]
 
         def run_recursive(scope: list, default_return_value: Any = null):
             nonlocal _continue, _break, _return
@@ -1657,10 +1663,13 @@ def run(filename, lines):
                 elif len(_target.arguments) != len(_args):
                     print_error(f"ArgumentError: function expected {len(_target.arguments)} argument{'' if len(_target.arguments) == 1 else 's'}, got {len(_args)}", inner["pos"])
 
+                append_stack("function")
                 for n, a in enumerate(_target.arguments):
-                    variables[a] = _args[n]
+                    set_variable(a, _args[n], force_inner=True)
 
                 _ret: Any = run_recursive(["functions", _target.index])
+                stack.pop()
+
                 if _return is not None:
                     _r = _return
                     _return = None
@@ -1677,6 +1686,28 @@ def run(filename, lines):
                         c += _str(val[-1] if val else null)
 
                 return c
+
+            def append_stack(_type):
+                stack.append({"type": _type, "variables": {}})
+
+            def get_variable(varname):
+                for st in reversed(stack):
+                    if varname in st["variables"]:
+                        return st["variables"][varname]
+                    if st["type"] == "function":
+                        if varname in stack[0]["variables"]:
+                            return stack[0]["variables"][varname]
+                        break
+                print_error(f"UndefinedError: variable '{varname}' is not defined", inner["pos"])
+
+            def set_variable(varname, new_value, force_inner=False):
+                for st in reversed(stack):
+                    if (varname in st["variables"] and st["type"] != "for loop") or st["type"] == "function" or force_inner:
+                        st["variables"][varname] = new_value
+                        return new_value
+
+                stack[0]["variables"][varname] = new_value
+                return new_value
 
             inner: dict = ast
             for s in scope:
@@ -1724,7 +1755,7 @@ def run(filename, lines):
 
                 output = ""
 
-                if mode == "normal":
+                if mode in ("normal", "no newline"):
                     if isinstance(args, list):
                         output = "".join(map(_str, args))
                     else:
@@ -1739,9 +1770,9 @@ def run(filename, lines):
                         output = " ".join(args)
 
                 if SHELL:
-                    print(GREEN + output + RESET)
+                    print(GREEN + output + RESET, end="" if mode == "no newline" else "\n")
                 else:
-                    print(output)
+                    print(output, end="" if mode == "no newline" else "\n")
                 return output
 
             # Keywords
@@ -1765,19 +1796,11 @@ def run(filename, lines):
 
             # Get variable
             elif inner["type"] == "get":
-                name = inner["id"]
-                if name in variables:
-                    return variables[name]
-                else:
-                    print_error(f"UndefinedError: variable '{name}' is not defined", inner["pos"])
+                return get_variable(inner["id"])
 
             # Set variable
             elif inner["type"] == "set":
-                name = inner["id"]
-                args = run_recursive(scope + ["args"])
-
-                variables[name] = args
-                return variables[name]
+                return set_variable(inner["id"], run_recursive(scope + ["args"]))
 
             # Set list index
             elif inner["type"] == "set index":
@@ -1789,7 +1812,7 @@ def run(filename, lines):
                     target[index] = args
                     return target[index]
                 except TypeError:
-                    print_error(f"TypeError: cannot assign index of type '{target.__class__.__name__}'", inner["pos"])
+                    print_error(f"TypeError: expected int for index, found type '{target.__class__.__name__}'", inner["pos"])
 
             # Unpacking
             elif inner["type"] == "set multiple":
@@ -1809,9 +1832,7 @@ def run(filename, lines):
                 for i, v in enumerate(inner["targets"]):
                     # Set variable
                     if v.get("type") == "get":
-                        name = v["id"]
-                        variables[name] = values[i]
-                        return_values.append(variables[name])
+                        return_values.append(set_variable(v["id"], values[i]))
 
                     # Set list index
                     elif v.get("type") == "index":
@@ -1893,6 +1914,8 @@ def run(filename, lines):
                         if len(target) != 1:
                             print_error(f"ValueError: expected string with 1 character, found {len(target)} characters", inner["pos"])
                         return ord(target)
+                    elif target is null:
+                        return "\0"
                     else:
                         print_error(f"TypeError: cannot use char operator on type '{target.__class__.__name__}'", inner["pos"])
 
@@ -1975,18 +1998,14 @@ def run(filename, lines):
 
             # Increment (++ and --)
             elif inner["type"] == "increment":
-                if inner['id'] not in variables:
-                    print_error(f"UndefinedError: variable '{inner['id']}' is not defined", inner["pos"])
+                var = get_variable(inner["id"])
 
-                var = variables[inner["id"]]
                 if isinstance(var, int):
                     d = 1 if inner["mode"] == "add" else -1
                     if inner["position"] == "before":
-                        var += d
-                        variables[inner["id"]] = var
-                        return var
+                        return set_variable(inner["id"], var + d)
                     elif inner["position"] == "after":
-                        variables[inner["id"]] += d
+                        set_variable(inner["id"], var + d)
                         return var
                 else:
                     print_error(f"TypeError: cannot increment type '{var.__class__.__name__}'", inner["pos"])
@@ -2100,6 +2119,7 @@ def run(filename, lines):
                 _vars = inner["vars"]
                 return_values = []
 
+                append_stack("for loop")
                 for v in lst:
                     if _vars is not None:
                         if _vars["type"] == "list":
@@ -2110,10 +2130,10 @@ def run(filename, lines):
                                 print_error(f"ValueError: too many values to unpack (targets: {len(_vars['values'])}, values: {len(v)})", inner["pos"])
 
                             for i, _v in enumerate(_vars["values"]):
-                                variables[_v["id"]] = v[i]
+                                set_variable(_v["id"], v[i], force_inner=True)
 
                         else:
-                            variables[_vars["id"]] = v
+                            set_variable(_vars["id"], v, force_inner=True)
 
                     ret = run_recursive(scope + ["statements"])
 
@@ -2133,6 +2153,7 @@ def run(filename, lines):
                     elif ret and ret[-1] is not null:
                         return_values.append(ret[-1])
 
+                stack.pop()
                 return "".join(map(_str, return_values)) if string_loop else return_values
 
             # While loop

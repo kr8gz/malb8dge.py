@@ -1,0 +1,42 @@
+memory = [ptr = inputPtr = 0] * 30000
+input = _("Input: ")
+brainfuck = (code): {
+    codePtr = 0
+    codePtr < code_ ~ ? {
+        char = code.codePtr
+        "+-"[?char] ? {
+            memory.ptr = memory.ptr + (char + 1)$ % 256
+        } ! "<>"[?char] ? {
+            ptr = ptr + (char == ">" ? 1 ! -1) % 30000
+        } ! char == "." ? {
+            |'memory.ptr
+        } ! char == "," ? {
+             memory.ptr = inputPtr < input_ ? 'input.inputPtr++
+        } ! char == "[" ? {
+            brackets = 0
+            (^^code)[codePtr + 1:] ~ i, c {
+                end = i
+                c == "[" ? {
+                    brackets++
+                }
+                c == "]" ? {
+                    !brackets ? {
+                        %
+                    }
+                    brackets--
+                }
+            }
+            memory.ptr ~ ? {
+                ###;[[code, memory[:10], ptr, codePtr]]
+                brainfuck(code[codePtr + 1:end])
+            }
+            codePtr = end
+        } ! char == "]" ? {
+            ;"Unbalanced brackets!"
+            %%
+        }
+        codePtr++
+    }
+}
+
+brainfuck("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.")
