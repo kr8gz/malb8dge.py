@@ -15,6 +15,8 @@ RESET = "\x1b[0;39m"
 SHELL = False
 DEBUG_MODE = False
 
+stack = [{"type": "normal", "variables": {}}]
+
 after_operators = (  # can't have any of these in binary_operators
     '`', '^^', '##', '#$', '_', '``', '$$', '@@', '..',  # string stuff
     '$', '\'',                                           # number stuff
@@ -140,12 +142,13 @@ Token.none = Token("", None, 0, 0)
 
 class func:
 
-    def __init__(self, index, arguments):
+    def __init__(self, index, arguments, defaults):
         self.index = index
         self.arguments = arguments
+        self.defaults = defaults
 
     def __repr__(self):
-        return f"<func({', '.join(self.arguments)}) index={self.index}>"
+        return f"<func({', '.join(('*' if d is not None else '') + a for a, d in zip(self.arguments, self.defaults))}) index={self.index}>"
 
 
 class null:
@@ -172,7 +175,7 @@ def debug(*args):
 def run_file(filename):
     with open(filename, "r", encoding="utf-8") as f:
         lines = f.readlines()
-    run(filename, lines)
+    run(os.path.abspath(filename), lines)
 
 
 def run(filename, lines):
@@ -611,7 +614,7 @@ def run(filename, lines):
 
                 def add(self, *s):
                     """
-                    Call .add() when there is still parsing to do before returning
+                    Call bm.add() when there is still parsing to do before returning
                     """
                     if s:
                         return BracketManager(self, self.bracket, *self.sep, *s)
@@ -731,8 +734,9 @@ def run(filename, lines):
                 return statement
 
             @add_ast_pos
-            def parse_list(bm, existing_expr=None) -> dict:
+            def parse_list(bm, existing_expr=None, unpack=False) -> dict:
                 values = [] if existing_expr is None else [existing_expr]
+                sep = (',', '=') if unpack else (',',)
 
                 while t + 1 < len(tokens):
                     _next()
@@ -750,13 +754,13 @@ def run(filename, lines):
                     # start with first expression
                     elif not values:
                         prev()
-                        values.append(parse_expression(bm.add(',', '=')))
+                        values.append(parse_expression(bm.add(*sep)))
 
                     elif token == ',':
-                        values.append(parse_expression(bm.add(',', '=')))
+                        values.append(parse_expression(bm.add(*sep)))
 
                     # unpacking
-                    elif token == '=':
+                    elif token == '=' and unpack:
                         for v in values:
                             if v.get("type") not in ("get", "index"):
                                 print_error("SyntaxError: invalid target for assignment", tokens[t - 1].pos)
@@ -806,10 +810,10 @@ def run(filename, lines):
                     elif bm.is_closing():
                         return expr
 
-                    # tuple
+                    # unparenthesized list
                     elif token == ',':
                         prev()
-                        expr = parse_list(bm.add(), existing_expr=expr)
+                        expr = parse_list(bm.add(), existing_expr=expr, unpack=True)
 
                     # loop
                     elif token == '~':
@@ -942,11 +946,13 @@ def run(filename, lines):
 
                 else:
                     prev()
-                    # this can lead to a weird group -> list structure but shouldn't cause any problems - ungroup(x)
-                    return {
-                        "type": "group",
-                        "inner": parse_expression(bm)
-                    }
+                    inner = parse_list(bm)
+                    if len(inner["values"]) == 1:
+                        return {
+                            "type": "group",
+                            "inner": inner["values"][0]
+                        }
+                    return inner
 
             @add_ast_pos
             def parse_value(bm, optional=False) -> dict:
@@ -1250,15 +1256,22 @@ def run(filename, lines):
             @add_ast_pos
             def parse_function(bm, args) -> dict:
                 args = ungroup(args)
+                defaults = []
 
                 if args.get("type") == "get":
                     args = [args["id"]]
 
+                elif args.get("type") == "set":
+                    defaults.append(args["args"])
+                    args = [args["id"]]
+
                 elif args.get("type") == "list":
+                    args["values"] = [ungroup(a) for a in args["values"]]
                     for a in args["values"]:
-                        if a.get("type") != "get":
+                        if a.get("type") not in ("get", "set"):
                             print_error("SyntaxError: invalid argument declaration", token.pos)
 
+                    defaults += [a["args"] if a["type"] == "set" else None for a in args["values"]]
                     args = [a["id"] for a in args["values"]]
 
                 else:
@@ -1271,6 +1284,7 @@ def run(filename, lines):
                 return {
                     "type": "function",
                     "arguments": args,
+                    "defaults": defaults,
                     "index": len(ast["functions"]) - 1  # index of this function in the "functions" scope
                 }
 
@@ -1437,20 +1451,18 @@ def run(filename, lines):
         _break = None
         _return = None
 
-        stack = [{"type": "normal", "variables": {}}]
-
-        def run_recursive(scope: list, default_return_value: Any = null):
+        def run_recursive(inner, default_return_value: Any = null):
             nonlocal _continue, _break, _return
 
             # Helper functions
             def to_num(n):
                 try:
                     n = float(n)
-                    if n % 1 == 0:
+                    if n.is_integer():
                         n = int(n)
                     return n
                 except ValueError:
-                    print_error(f"ValueError: cannot convert \"{n}\" to number", inner["pos"])
+                    print_error(f"ValueError: cannot convert '{n}' to number", inner["pos"])
 
             def run_binary_operator(a, operator, b):
 
@@ -1659,15 +1671,21 @@ def run(filename, lines):
 
                 if not isinstance(_target, func):
                     print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
-
-                elif len(_target.arguments) != len(_args):
-                    print_error(f"ArgumentError: function expected {len(_target.arguments)} argument{'' if len(_target.arguments) == 1 else 's'}, got {len(_args)}", inner["pos"])
+                elif len(_args) > len(_target.arguments):
+                    print_error(f"ArgumentError: expected at most {len(_target.arguments)} arguments, found {len(_args)}", inner["pos"])
 
                 append_stack("function")
                 for n, a in enumerate(_target.arguments):
-                    set_variable(a, _args[n], force_inner=True)
+                    if n >= len(_args):
+                        val = _target.defaults[n]
+                        if val is None:
+                            print_error(f"ArgumentError: argument '{a}' is required", inner["pos"])
+                        val = run_recursive(val)
+                    else:
+                        val = _args[n]
+                    set_variable(a, val, force_inner=True)
 
-                _ret: Any = run_recursive(["functions", _target.index])
+                _ret: Any = run_recursive(ast["functions"][_target.index])
                 stack.pop()
 
                 if _return is not None:
@@ -1682,7 +1700,10 @@ def run(filename, lines):
                     if isinstance(frag, str):
                         c += frag
                     else:
-                        val = run_recursive(scope + [*fragments_scope, n])
+                        _inner = inner
+                        for s in fragments_scope:
+                            _inner = inner[s]
+                        val = run_recursive(_inner[n])
                         c += _str(val[-1] if val else null)
 
                 return c
@@ -1701,23 +1722,23 @@ def run(filename, lines):
                 print_error(f"UndefinedError: variable '{varname}' is not defined", inner["pos"])
 
             def set_variable(varname, new_value, force_inner=False):
-                for st in reversed(stack):
-                    if (varname in st["variables"] and st["type"] != "for loop") or st["type"] == "function" or force_inner:
-                        st["variables"][varname] = new_value
-                        return new_value
+                st = stack[0]
+                if force_inner:
+                    st = stack[-1]
 
-                stack[0]["variables"][varname] = new_value
+                elif varname not in stack[0]["variables"]:
+                    for st in reversed(stack):
+                        if varname in st["variables"] or st["type"] != "for loop":
+                            break
+
+                st["variables"][varname] = new_value
                 return new_value
-
-            inner: dict = ast
-            for s in scope:
-                inner = inner[s]
 
             if isinstance(inner, list):
                 ret = []
 
                 for i in range(len(inner)):
-                    r = run_recursive(scope + [i])
+                    r = run_recursive(inner[i])
                     if _return is not None or _break is not None or _continue is not None:
                         break
 
@@ -1731,7 +1752,7 @@ def run(filename, lines):
             # Input statements
             elif inner["type"] == "input":
                 mode = inner["mode"]
-                prompt = run_recursive(scope + ["prompt"])
+                prompt = run_recursive(inner["prompt"])
                 prompt = "" if prompt is null else prompt
 
                 if SHELL:
@@ -1751,7 +1772,7 @@ def run(filename, lines):
             # Print statements
             elif inner["type"] == "print":
                 mode = inner["mode"]
-                args = run_recursive(scope + ["args"], default_return_value="")
+                args = run_recursive(inner["args"], default_return_value="")
 
                 output = ""
 
@@ -1786,11 +1807,11 @@ def run(filename, lines):
                 elif name == "null":
                     return null
                 elif name == "return":
-                    _return = run_recursive(scope + ["value"])
+                    _return = run_recursive(inner["value"])
                 elif name == "break":
-                    _break = run_recursive(scope + ["value"])
+                    _break = run_recursive(inner["value"])
                 elif name == "continue":
-                    _continue = run_recursive(scope + ["value"])
+                    _continue = run_recursive(inner["value"])
                 elif name == "exit":
                     exit()
 
@@ -1800,13 +1821,13 @@ def run(filename, lines):
 
             # Set variable
             elif inner["type"] == "set":
-                return set_variable(inner["id"], run_recursive(scope + ["args"]))
+                return set_variable(inner["id"], run_recursive(inner["args"]))
 
             # Set list index
             elif inner["type"] == "set index":
-                target = run_recursive(scope + ["target"])
-                index = run_recursive(scope + ["index"])
-                args = run_recursive(scope + ["args"])
+                target = run_recursive(inner["target"])
+                index = run_recursive(inner["index"])
+                args = run_recursive(inner["args"])
 
                 try:
                     target[index] = args
@@ -1816,7 +1837,7 @@ def run(filename, lines):
 
             # Unpacking
             elif inner["type"] == "set multiple":
-                values = run_recursive(scope + ["values"])
+                values = run_recursive(inner["values"])
 
                 if not isinstance(values, (str, list)):
                     print_error(f"TypeError: cannot unpack type '{values.__class__.__name__}'", inner["pos"])
@@ -1836,8 +1857,8 @@ def run(filename, lines):
 
                     # Set list index
                     elif v.get("type") == "index":
-                        target = run_recursive(scope + ["targets", i, "target"])
-                        index = run_recursive(scope + ["targets", i, "index"])
+                        target = run_recursive(inner["targets", i, "target"])
+                        index = run_recursive(inner["targets", i, "index"])
 
                         try:
                             target[index] = values[i]
@@ -1850,7 +1871,7 @@ def run(filename, lines):
             # Unary operators
             elif inner["type"] == "unary operator":
                 op = inner["operator"]
-                target = run_recursive(scope + ["target"])
+                target = run_recursive(inner["target"])
 
                 if op == '-':
                     if isinstance(target, (float, int)):
@@ -1937,7 +1958,7 @@ def run(filename, lines):
             # After operators
             elif inner["type"] == "after operator":
                 op = inner["operator"]
-                target = run_recursive(scope + ["target"])
+                target = run_recursive(inner["target"])
 
                 if op == '$':
                     if isinstance(target, list):
@@ -1994,7 +2015,7 @@ def run(filename, lines):
 
             # Binary operators
             elif inner["type"] == "binary operator":
-                return run_binary_operator(run_recursive(scope + ["a"]), inner["operator"], run_recursive(scope + ["b"]))
+                return run_binary_operator(run_recursive(inner["a"]), inner["operator"], run_recursive(inner["b"]))
 
             # Increment (++ and --)
             elif inner["type"] == "increment":
@@ -2012,31 +2033,31 @@ def run(filename, lines):
 
             # Functions
             elif inner["type"] == "function":
-                return func(inner["index"], inner["arguments"])
+                return func(inner["index"], inner["arguments"], inner["defaults"])
 
             # Function calls
             elif inner["type"] == "call":
-                return run_function_call(run_recursive(scope + ["target"]), run_recursive(scope + ["args"]))
+                return run_function_call(run_recursive(inner["target"]), run_recursive(inner["args"]))
 
             # Parentheses (in expressions)
             elif inner["type"] == "group":
-                args = run_recursive(scope + ["inner"])
+                args = run_recursive(inner["inner"])
                 return args
 
             # Blocks (as values)
             elif inner["type"] == "block":
-                args = run_recursive(scope + ["statements"])
+                args = run_recursive(inner["statements"])
                 return args[-1] if args else null
 
             # Lists
             elif inner["type"] == "list":
-                args = run_recursive(scope + ["values"])
+                args = run_recursive(inner["values"])
                 return args
 
             # Indexing
             elif inner["type"] == "index":
-                target = run_recursive(scope + ["target"])
-                index = run_recursive(scope + ["index"])
+                target = run_recursive(inner["target"])
+                index = run_recursive(inner["index"])
 
                 if not isinstance(index, int):
                     print_error(f"TypeError: expected int for index, found type '{index.__class__.__name__}'", inner["pos"])
@@ -2050,8 +2071,8 @@ def run(filename, lines):
 
             # Slicing
             elif inner["type"] == "slice":
-                target = run_recursive(scope + ["target"])
-                values: list = run_recursive(scope + ["values"])  # i thought pycharm was smart why do i need typehinting here
+                target = run_recursive(inner["target"])
+                values: list = run_recursive(inner["values"])  # i thought pycharm was smart why do i need typehinting here
 
                 for i, v in enumerate(values):
                     if not isinstance(v, int) and v is not null:
@@ -2067,8 +2088,8 @@ def run(filename, lines):
 
             # Get index of element in list
             elif inner["type"] == "index of":
-                target = run_recursive(scope + ["target"])
-                value = run_recursive(scope + ["value"])
+                target = run_recursive(inner["target"])
+                value = run_recursive(inner["value"])
 
                 if isinstance(target, str) and not isinstance(value, str):
                     print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
@@ -2082,8 +2103,8 @@ def run(filename, lines):
 
             # Check if element is in list
             elif inner["type"] == "contains":
-                target = run_recursive(scope + ["target"])
-                value = run_recursive(scope + ["value"])
+                target = run_recursive(inner["target"])
+                value = run_recursive(inner["value"])
 
                 if isinstance(target, str) and not isinstance(value, str):
                     print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
@@ -2095,8 +2116,8 @@ def run(filename, lines):
 
             # Count occurences of element in list
             elif inner["type"] == "count":
-                target = run_recursive(scope + ["target"])
-                value = run_recursive(scope + ["value"])
+                target = run_recursive(inner["target"])
+                value = run_recursive(inner["value"])
 
                 if isinstance(target, str) and not isinstance(value, str):
                     print_error(f"TypeError: expected str for count in str, found type '{value.__class__.__name__}'", inner["pos"])
@@ -2110,7 +2131,7 @@ def run(filename, lines):
             elif inner["type"] == "for loop":
                 string_loop = inner["string"]
 
-                lst = run_recursive(scope + ["list"])
+                lst = run_recursive(inner["list"])
                 if isinstance(lst, int) and not isinstance(lst, bool):
                     lst = list(map(int, str(lst)))
                 elif not isinstance(lst, (str, list)):
@@ -2135,7 +2156,7 @@ def run(filename, lines):
                         else:
                             set_variable(_vars["id"], v, force_inner=True)
 
-                    ret = run_recursive(scope + ["statements"])
+                    ret = run_recursive(inner["statements"])
 
                     if _continue is not None:
                         return_values.append(_continue)
@@ -2162,8 +2183,8 @@ def run(filename, lines):
 
                 return_values = []
 
-                while run_recursive(scope + ["condition"]):
-                    ret = run_recursive(scope + ["statements"])
+                while run_recursive(inner["condition"]):
+                    ret = run_recursive(inner["statements"])
 
                     if _continue is not None:
                         return_values.append(_continue)
@@ -2185,14 +2206,14 @@ def run(filename, lines):
 
             # If statement
             elif inner["type"] == "if":
-                ret = run_recursive(scope + ["true" if run_recursive(scope + ["condition"]) else "false"])
+                ret = run_recursive(inner["true" if run_recursive(inner["condition"]) else "false"])
                 return ret[-1] if ret else null
 
             # x{...} syntax
             elif inner["type"] == "brace syntax":
                 op = inner["op"]
 
-                target = run_recursive(scope + ["target"])
+                target = run_recursive(inner["target"])
 
                 if isinstance(target, int) and not isinstance(target, bool):
                     target = list(map(int, str(target)))
@@ -2203,7 +2224,7 @@ def run(filename, lines):
                 elif len(target) == 0:
                     print_error(f"ValueError: brace syntax iterable must have at least one value", inner["pos"])
 
-                key = run_recursive(scope + ["key"])
+                key = run_recursive(inner["key"])
 
                 if not isinstance(key, func) and key is not null:
                     print_error(f"TypeError: expected a function, found type '{key.__class__.__name__}'", inner["pos"])
@@ -2243,7 +2264,7 @@ def run(filename, lines):
 
             # Replacing
             elif inner["type"] == "replace":
-                target = run_recursive(scope + ["target"])
+                target = run_recursive(inner["target"])
                 if not isinstance(target, str):
                     print_error(f"TypeError: cannot use replace on type '{target.__class__.__name__}'", inner["pos"])
 
@@ -2272,14 +2293,14 @@ def run(filename, lines):
             return null
 
         if SHELL:
-            line_return_value = run_recursive(["statements"])
+            line_return_value = run_recursive(ast["statements"])
             if line_return_value and line_return_value[-1] != null:
                 out = _str(line_return_value[-1])
                 if isinstance(line_return_value[-1], str):
                     out = f'"{add_escapes(out)}"'
                 print(CYAN + out + RESET)
         else:
-            run_recursive(["statements"])
+            run_recursive(ast["statements"])
 
     except RecursionError:
         print_error("RecursionError: recursion limit reached")

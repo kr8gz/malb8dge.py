@@ -13,18 +13,22 @@ brainfuck = (code): {
         } ! char == "," ? {
              memory.ptr = inputPtr < input_ ? 'input.inputPtr++
         } ! char == "[" ? {
+            end = codePtr
             brackets = 0
-            (^^code)[codePtr + 1:] ~ i, c {
+            (^^code)[codePtr:] ~ i, c {
                 end = i
                 c == "[" ? {
                     brackets++
                 }
                 c == "]" ? {
-                    !brackets ? {
+                    !--brackets ? {
                         %
                     }
-                    brackets--
                 }
+            }
+            brackets ? {
+                ;"Unbalanced brackets!"
+                %%
             }
             memory.ptr ~ ? {
                 ###;[[code, memory[:10], ptr, codePtr]]
