@@ -69,25 +69,23 @@ class Character:
 
     def __init__(self, value: str, line: int, col: int):
         self.value = value
-        self.line = line
-        self.col = col
         self.pos = line, col
 
     def __eq__(self, other):
         return self.value == other
 
     def __repr__(self):
-        return f"Character(char='{self.value}', {self.line}:{self.col})"
+        return f"Character(char='{self.value}', {self.pos[0]}:{self.pos[1]})"
 
     @staticmethod
-    def from_lines(_lines, line_offset=0):
+    def from_lines(_lines, start_line=1, start_col=1):
         return [Character(char, lineno, colno)
-                for lineno, line in [(a + line_offset + 1, b) for a, b in enumerate(_lines)]
-                for colno, char in [(a + 1, b) for a, b in enumerate(line)]]
+                for lineno, line in [(a + start_line, b) for a, b in enumerate(_lines)]
+                for colno, char in [(a + start_col if lineno == start_line else a + 1, b) for a, b in enumerate(line)]]
 
     @staticmethod
-    def from_str(_str):
-        return Character.from_lines(_str.split("\n"))
+    def from_str(_str, start_line=1, start_col=1):
+        return Character.from_lines(_str.split("\n"), start_line=start_line, start_col=start_col)
 
 
 Character.none = Character(" ", 0, 0)
@@ -117,10 +115,10 @@ class String:
 
 class Token:
 
-    def __init__(self, _type: str, value, line: int, col: int):
+    def __init__(self, _type: str, value, pos: tuple[int, int]):
         self.type = _type
         self.value = value
-        self.pos = line, col
+        self.pos = pos
 
     def __eq__(self, other):
         """Returns False if self.type == "literal" """
@@ -137,7 +135,7 @@ class Token:
         return f"Token(type={self.type}, {repr(self.value)}, {self.pos[0]}:{self.pos[1]})"
 
 
-Token.none = Token("", None, 0, 0)
+Token.none = Token("", None, (0, 0))
 
 
 class func:
@@ -287,7 +285,7 @@ def run(filename, lines):
                         iden += char.value
                     else:
                         prev()
-                        _tokens.append(Token("identifier", iden, char.line, char.col))
+                        _tokens.append(Token("identifier", iden, char.pos))
                         return
 
             def lex_replace():
@@ -300,7 +298,8 @@ def run(filename, lines):
                 fragments = []
                 escape = False
                 braces = 0
-                start = char.line, char.col  # used for unclosed replace EOF error
+                start = char.pos  # used for unclosed replace EOF error
+                frag_start = 0, 0  # will be set later if needed
 
                 def finish_value():
                     nonlocal value, fragments
@@ -356,7 +355,7 @@ def run(filename, lines):
                             find_pattern,
                             pattern,
                             fillvalue=[(False, "")]
-                        )), replace_mode), char.line, char.col))
+                        )), replace_mode), char.pos))
                         return
 
                     # End current value
@@ -368,7 +367,7 @@ def run(filename, lines):
                         step = 2
 
                         if not pattern and not fragments and not value:
-                            print_error("SyntaxError: find pattern in replace cannot be empty", (char.line, char.col))
+                            print_error("SyntaxError: find pattern in replace cannot be empty", char.pos)
 
                         finish_value()
                         find_pattern = pattern
@@ -382,6 +381,7 @@ def run(filename, lines):
                                 if value:
                                     fragments.append((False, value))
                                     value = ""
+                                frag_start = chars[t + 1].pos
                             else:
                                 value += "{"
                             braces += 1
@@ -390,7 +390,7 @@ def run(filename, lines):
                             if braces:
                                 braces -= 1
                                 if not braces:
-                                    fragments.append((True, value))
+                                    fragments.append((True, value, frag_start))
                                     value = ""
                                 else:
                                     value += "}"
@@ -411,7 +411,8 @@ def run(filename, lines):
                 fragments = []
                 escape = False
                 braces = 0
-                start = char.line, char.col  # used for unclosed string EOF error
+                start = char.pos  # used for unclosed string EOF error
+                frag_start = 0, 0  # will be set later if needed
 
                 while t + 1 < len(chars):
 
@@ -438,7 +439,7 @@ def run(filename, lines):
                     # End string
                     elif char == "\"" and not braces:
                         fragments.append((False, value))
-                        _tokens.append(Token("string", String(fragments), char.line, char.col))
+                        _tokens.append(Token("string", String(fragments), char.pos))
                         return
 
                     # Continue string
@@ -447,6 +448,7 @@ def run(filename, lines):
                             if not braces:
                                 fragments.append((False, value))
                                 value = ""
+                                frag_start = chars[t + 1].pos
                             else:
                                 value += "{"
                             braces += 1
@@ -455,7 +457,7 @@ def run(filename, lines):
                             if braces:
                                 braces -= 1
                                 if not braces:
-                                    fragments.append((True, value))
+                                    fragments.append((True, value, frag_start))
                                     value = ""
                                 else:
                                     value += "}"
@@ -474,9 +476,9 @@ def run(filename, lines):
 
                 def add_number_token():
                     if floating_point:
-                        _tokens.append(Token("literal", float(value), char.line, char.col))
+                        _tokens.append(Token("literal", float(value), char.pos))
                     else:
-                        _tokens.append(Token("literal", int(value), char.line, char.col))
+                        _tokens.append(Token("literal", int(value), char.pos))
 
                 while t + 1 < len(chars):
 
@@ -544,7 +546,7 @@ def run(filename, lines):
                         prev()
                         floating_point_override = symbol == "."
 
-                        _tokens.append(Token("symbol", symbol, char.line, char.col))
+                        _tokens.append(Token("symbol", symbol, char.pos))
                         return
 
             floating_point_override = False
@@ -581,7 +583,7 @@ def run(filename, lines):
 
             return _tokens
 
-        lexed_tokens = lex(Character.from_lines([lines[-1]], line_offset=len(lines) - 1) if SHELL else Character.from_lines(lines))
+        lexed_tokens = lex(Character.from_lines([lines[-1]], start_line=len(lines)) if SHELL else Character.from_lines(lines))
 
         # Debugging information
         if DEBUG_MODE and not SHELL:
@@ -1086,10 +1088,7 @@ def run(filename, lines):
 
                 elif not optional:
                     if token == Token.none:
-                        print_error(
-                            f"SyntaxError: expected a value, found end of {'line' if filename == '<shell>' else 'file'}",
-                            (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1)
-                        )
+                        print_error("SyntaxError: expected a value", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
 
                     else:
                         print_error(f"SyntaxError: expected a value, found '{token.value}'", token.pos)
@@ -1169,7 +1168,7 @@ def run(filename, lines):
                     return value
 
             def parse_fragment(frag: tuple[bool, str]) -> list[dict]:
-                return parse(lex(Character.from_str(frag[1]))) if frag[0] else frag[1]  # TODO: get pos into the fragments somehow
+                return parse(lex(Character.from_str(frag[1], start_line=frag[2][0], start_col=frag[2][1]))) if frag[0] else frag[1]
 
             def parse_index(bm, value) -> dict:  # index, index of, slice
                 pos = 0
@@ -1694,18 +1693,13 @@ def run(filename, lines):
                     return _r
                 return _ret[-1] if _ret else null
 
-            def concatenate_fragments(fragments: list, fragments_scope: list):
+            def concatenate_fragments(fragments: list):
                 c = ""
-                for n, frag in enumerate(fragments):
+                for frag in fragments:
                     if isinstance(frag, str):
                         c += frag
-                    else:
-                        _inner = inner
-                        for s in fragments_scope:
-                            _inner = inner[s]
-                        val = run_recursive(_inner[n])
-                        c += _str(val[-1] if val else null)
-
+                    elif val := run_recursive(frag):
+                        c += _str(val[-1])
                 return c
 
             def append_stack(_type):
@@ -2260,7 +2254,7 @@ def run(filename, lines):
 
             # Strings
             elif inner["type"] == "string":
-                return concatenate_fragments(inner["fragments"], ["fragments"])
+                return concatenate_fragments(inner["fragments"])
 
             # Replacing
             elif inner["type"] == "replace":
@@ -2268,9 +2262,9 @@ def run(filename, lines):
                 if not isinstance(target, str):
                     print_error(f"TypeError: cannot use replace on type '{target.__class__.__name__}'", inner["pos"])
 
-                for i, (left, right) in enumerate(inner["pairs"]):
-                    left = concatenate_fragments(left, ["pairs", i, 0])
-                    right = concatenate_fragments(right, ["pairs", i, 1])
+                for left, right in inner["pairs"]:
+                    left = concatenate_fragments(left)
+                    right = concatenate_fragments(right)
 
                     if inner["mode"] == "normal":
                         target = target.replace(left, right)
