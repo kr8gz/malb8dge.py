@@ -64,6 +64,14 @@ def add_escapes(s):
     return new
 
 
+def isnum(s):
+    return all(c in "0123456789" for c in s)
+
+
+def isalphanum(s):
+    return all(c in "0123456789" or c.isalpha() for c in s)
+
+
 # Helper classes
 class Character:
 
@@ -281,7 +289,7 @@ def run(filename, lines):
                 iden = ""
                 while True:
                     _next()
-                    if char.value.isalpha() or (iden and char.value.isdecimal()):
+                    if char.value.isalpha() or (iden and isnum(char.value)):
                         iden += char.value
                     else:
                         prev()
@@ -497,7 +505,7 @@ def run(filename, lines):
                             continue
 
                     # End number
-                    elif not char.value.isdecimal():
+                    elif not isnum(char.value):
                         prev()
 
                         if value[-1] == ".":
@@ -568,7 +576,7 @@ def run(filename, lines):
                     lex_string()
 
                 # Number
-                elif char.value.isdecimal():
+                elif isnum(char.value):
                     prev()
                     lex_number()
 
@@ -1302,7 +1310,7 @@ def run(filename, lines):
                         "string": block[1]
                     }
 
-                elif token.is_one_of((':', '|', '{', '[')):
+                elif token.is_one_of((':', '+', '{', '[')):
                     prev()
                     block = parse_block(bm, allow_string_loop=True)
                     return {
@@ -1315,7 +1323,7 @@ def run(filename, lines):
 
                 else:
                     prev()
-                    var = ungroup(parse_expression(bm.add(':', '|', '{', '[')))
+                    var = ungroup(parse_expression(bm.add(':', '+', '{', '[')))
                     if var.get("type") == "list":
                         for v in var["values"]:
                             if v.get("type") != "get":
@@ -1355,8 +1363,8 @@ def run(filename, lines):
             def parse_block(bm, needs_colon=True, allow_string_loop=False) -> list[dict]:
                 _next()
 
-                if token == ':' or (allow_string_loop and token == '|'):
-                    string_loop = token == '|'
+                if token == ':' or (allow_string_loop and token == '+'):
+                    string_loop = token == '+'
                     statement = parse_statement(bm)
                     if statement.get("type"):
                         return ([statement], string_loop) if allow_string_loop else [statement]
@@ -1605,7 +1613,7 @@ def run(filename, lines):
                             print_error(f"TypeError: cannot add type '{b.__class__.__name__}' to type '{a.__class__.__name__}'", inner["pos"])
                     elif isinstance(a, str):
                         if isinstance(b, list):
-                            return a + " ".join(map(_str, b))
+                            return a + "".join(map(_str, b))
                         else:
                             return a + _str(b)
                     elif isinstance(a, list):
@@ -1999,9 +2007,9 @@ def run(filename, lines):
                         if op == '``':
                             return target.isalpha()
                         elif op == '$$':
-                            return target.isdecimal()
+                            return isnum(target)
                         elif op == '@@':
-                            return target.isalnum()
+                            return isalphanum(target)
                         elif op == '..':
                             return target.isspace()
                     else:
