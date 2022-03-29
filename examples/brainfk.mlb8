@@ -31,7 +31,6 @@ brainfuck = (code): {
                 %%
             }
             memory.ptr ~ ? {
-                ###;[[code, memory[:10], ptr, codePtr]]
                 brainfuck(code[codePtr + 1:end])
             }
             codePtr = end

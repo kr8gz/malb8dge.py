@@ -1169,7 +1169,7 @@ def run(filename, lines):
                     return value
 
             def parse_fragment(frag: tuple[bool, str]) -> list[dict]:
-                return parse(lex(Character.from_str(frag[1]))) if frag[0] else frag[1]
+                return parse(lex(Character.from_str(frag[1]))) if frag[0] else frag[1]  # TODO: get pos into the fragments somehow
 
             def parse_index(bm, value) -> dict:  # index, index of, slice
                 pos = 0
