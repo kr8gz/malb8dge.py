@@ -15,6 +15,7 @@ RESET = "\x1b[0;39m"
 SHELL = False
 DEBUG_MODE = False
 
+functions = []
 stack = [{"type": "normal", "variables": {}}]
 
 after_operators = (  # can't have any of these in binary_operators
@@ -738,7 +739,9 @@ def run(filename, lines):
                     return statement
 
                 _next()
-                if not bm.is_closing() and token != Token.none:
+                if token == ';':
+                    prev()
+                elif not bm.is_closing() and token != Token.none:
                     print_error(f"SyntaxError: expected end of statement, found '{token.value}'", token.pos)
 
                 return statement
@@ -930,9 +933,7 @@ def run(filename, lines):
                         prev()
 
                     else:
-                        print_error(
-                            f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.value}'",
-                            token.pos)
+                        print_error(f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.value}'", token.pos)
 
                 else:
                     if bm.bracket:
@@ -1266,6 +1267,7 @@ def run(filename, lines):
                 defaults = []
 
                 if args.get("type") == "get":
+                    defaults.append(None)
                     args = [args["id"]]
 
                 elif args.get("type") == "set":
@@ -1286,13 +1288,13 @@ def run(filename, lines):
 
                 bm.in_func = True
                 bm.in_loop = False
-                ast["functions"].append(parse_block(bm, needs_colon=False))
+                functions.append(parse_block(bm, needs_colon=False))
 
                 return {
                     "type": "function",
                     "arguments": args,
                     "defaults": defaults,
-                    "index": len(ast["functions"]) - 1  # index of this function in the "functions" scope
+                    "index": len(functions) - 1  # index of this function in the functions list
                 }
 
             @add_ast_pos
@@ -1439,19 +1441,16 @@ def run(filename, lines):
 
             return statements
 
-        # noinspection PyDictCreation
-        # because parse() changes ast
-        # also typehinting because apparently im not allowed to add stuff to an empty list (thanks pycharm)
         ast: dict = {
-            "statements": [],
-            "functions": []
+            "statements": parse(lexed_tokens)
         }
-        ast["statements"] = parse(lexed_tokens)
 
         # Debugging information
         if DEBUG_MODE and not SHELL:
             with open(f"{filename}-ast.json", "w") as f:
                 json.dump(ast, f, indent=2)
+            with open(f"{filename}-functions.json", "w") as f:
+                json.dump(dict(enumerate(functions)), f, indent=2)
 
         # -------------------------------------------------- Running ------------------------------------------------- #
         _continue = None
@@ -1692,7 +1691,7 @@ def run(filename, lines):
                         val = _args[n]
                     set_variable(a, val, force_inner=True)
 
-                _ret: Any = run_recursive(ast["functions"][_target.index])
+                _ret: Any = run_recursive(functions[_target.index])
                 stack.pop()
 
                 if _return is not None:
@@ -1718,8 +1717,11 @@ def run(filename, lines):
                     if varname in st["variables"]:
                         return st["variables"][varname]
                     if st["type"] == "function":
-                        if varname in stack[0]["variables"]:
-                            return stack[0]["variables"][varname]
+                        for _st in stack:
+                            if _st["type"] == "function":
+                                break
+                            if varname in _st["variables"]:
+                                return _st["variables"][varname]
                         break
                 print_error(f"UndefinedError: variable '{varname}' is not defined", inner["pos"])
 
@@ -2336,11 +2338,18 @@ else:
     SHELL = True
     shell_lines = []
     while True:
+        _line = ""
         try:
             _line = input(GRAY + ">>> " + RESET)
+        except KeyboardInterrupt:
+            print()
+            continue
+        except EOFError:
+            exit()
+        finally:
             shell_lines.append(_line)
+
+        try:
             run("<shell>", shell_lines)
         except ContinueShell:
-            pass
-        except (EOFError, KeyboardInterrupt):
-            exit()
+            continue
