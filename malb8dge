@@ -31,8 +31,8 @@ binary_operators = (  # already sorted by operator precedence
 )
 
 unary_operators = (
-    '.', '..', '`', '``',                      # string stuff
-    '-', '@', '^', '^^', '#', '!', '\'', '?',  # misc stuff
+    '.', '..', '`', '``',                           # string stuff
+    '-', '@', '^', '^^', '#', '!', '\'', '?', '*',  # misc stuff
 )
 
 misc_combined_symbols = (
@@ -728,7 +728,8 @@ def run(filename, lines):
                     elif token == '%%':
                         statement = {
                             "type": "keyword",
-                            "name": "exit"
+                            "name": "exit",
+                            "msg": parse_expression(bm, optional=True)
                         }
 
                 elif token != '\n':
@@ -1049,6 +1050,11 @@ def run(filename, lines):
                             "id": token.value
                         }
 
+                elif token == '&':
+                    value = {
+                        "type": "ref"
+                    }
+
                 elif token.is_one_of((';', '/', '|')):
                     value = {
                         "type": "print",
@@ -1075,12 +1081,12 @@ def run(filename, lines):
                     mode = "add" if token == '++' else "subtract"
 
                     v = parse_value(bm.add())
-                    if v["type"] != "get":
-                        print_error("SyntaxError: can only use increment operator on variables", token.pos)
+                    if v["type"] not in ("get", "ref"):
+                        print_error(f"SyntaxError: can only use {'increment' if token == '++' else 'decrement'} operator on variables", token.pos)
 
                     value = {
                         "type": "increment",
-                        "id": v["id"],
+                        "target": v,
                         "mode": mode,
                         "position": "before"
                     }
@@ -1149,12 +1155,12 @@ def run(filename, lines):
                         }
 
                     elif token.is_one_of(('++', '--')):
-                        if value["type"] != "get":
-                            print_error("SyntaxError: can only use increment operator on variables", token.pos)
+                        if value["type"] not in ("get", "ref"):
+                            print_error(f"SyntaxError: can only use {'increment' if token == '++' else 'decrement'} operator on variables", token.pos)
 
                         value = {
                             "type": "increment",
-                            "id": value["id"],
+                            "target": value,
                             "mode": "add" if token == '++' else "subtract",
                             "position": "after"
                         }
@@ -1215,9 +1221,10 @@ def run(filename, lines):
                             "value": parse_expression(BracketManager(bm, ']'))
                         }
 
-                    elif first and token == '?':  # [?expr] - contains
+                    elif first and token.is_one_of(('?', '!')):  # [?expr] - contains
                         return {
                             "type": "contains",
+                            "not": token == '!',
                             "target": value,
                             "value": parse_expression(BracketManager(bm, ']'))
                         }
@@ -1304,23 +1311,23 @@ def run(filename, lines):
                 _next()
 
                 if token == '?':
-                    block = parse_block(bm, needs_colon=False, allow_string_loop=True)
+                    block = parse_block(bm, needs_colon=False, allow_sum_loop=True)
                     return {
                         "type": "while loop",
                         "condition": expr,
                         "statements": block[0],
-                        "string": block[1]
+                        "sum": block[1]
                     }
 
                 elif token.is_one_of((':', '+', '{', '[')):
                     prev()
-                    block = parse_block(bm, allow_string_loop=True)
+                    block = parse_block(bm, allow_sum_loop=True)
                     return {
                         "type": "for loop",
                         "list": expr,
                         "vars": None,
                         "statements": block[0],
-                        "string": block[1]
+                        "sum": block[1]
                     }
 
                 else:
@@ -1334,13 +1341,13 @@ def run(filename, lines):
                     elif var.get("type") != "get":
                         print_error("SyntaxError: invalid target for assignment", token.pos)
 
-                    block = parse_block(bm, allow_string_loop=True)
+                    block = parse_block(bm, allow_sum_loop=True)
                     return {
                         "type": "for loop",
                         "list": expr,
                         "vars": var,
                         "statements": block[0],
-                        "string": block[1]
+                        "sum": block[1]
                     }
 
             @add_ast_pos
@@ -1362,28 +1369,28 @@ def run(filename, lines):
                     "false": on_false
                 }
 
-            def parse_block(bm, needs_colon=True, allow_string_loop=False) -> list[dict]:
+            def parse_block(bm, needs_colon=True, allow_sum_loop=False) -> list[dict]:
                 _next()
 
-                if token == ':' or (allow_string_loop and token == '+'):
-                    string_loop = token == '+'
+                if token == ':' or (allow_sum_loop and token == '+'):
+                    sum_loop = token == '+'
                     statement = parse_statement(bm)
                     if statement.get("type"):
-                        return ([statement], string_loop) if allow_string_loop else [statement]
+                        return ([statement], sum_loop) if allow_sum_loop else [statement]
                     else:
                         print_error("SyntaxError: expected statement", token.pos)
 
-                elif token == '{' or (allow_string_loop and token == '['):
+                elif token == '{' or (allow_sum_loop and token == '['):
                     stmts = []
                     bracket_pos = token.pos
-                    string_loop = token == '['
-                    closing = ']' if string_loop else '}'
+                    sum_loop = token == '['
+                    closing = ']' if sum_loop else '}'
 
                     while t + 1 < len(tokens):
                         _next()
 
                         if token == closing:
-                            return (stmts, string_loop) if allow_string_loop else stmts
+                            return (stmts, sum_loop) if allow_sum_loop else stmts
                         else:
                             prev()
                             statement = parse_statement(BracketManager(bm, '', closing))
@@ -1397,7 +1404,7 @@ def run(filename, lines):
                     prev()
                     statement = parse_statement(bm)
                     if statement.get("type"):
-                        return ([statement], False) if allow_string_loop else [statement]
+                        return ([statement], False) if allow_sum_loop else [statement]
                     else:
                         print_error("SyntaxError: expected statement", token.pos)
 
@@ -1457,18 +1464,23 @@ def run(filename, lines):
         _break = None
         _return = None
 
+        global_var = null
+
         def run_recursive(inner, default_return_value: Any = null):
-            nonlocal _continue, _break, _return
+            nonlocal _continue, _break, _return, global_var
 
             # Helper functions
             def to_num(n):
-                try:
-                    n = float(n)
-                    if n.is_integer():
-                        n = int(n)
+                if isinstance(n, (int, float)):
                     return n
+                try:
+                    n = int(n)
                 except ValueError:
-                    print_error(f"ValueError: cannot convert '{n}' to number", inner["pos"])
+                    try:
+                        n = float(n)
+                    except ValueError:
+                        print_error(f"ValueError: cannot convert '{n}' to number", inner["pos"])
+                return n
 
             def run_binary_operator(a, operator, b):
 
@@ -1723,6 +1735,7 @@ def run(filename, lines):
                             if varname in _st["variables"]:
                                 return _st["variables"][varname]
                         break
+
                 print_error(f"UndefinedError: variable '{varname}' is not defined", inner["pos"])
 
             def set_variable(varname, new_value, force_inner=False):
@@ -1817,6 +1830,8 @@ def run(filename, lines):
                 elif name == "continue":
                     _continue = run_recursive(inner["value"])
                 elif name == "exit":
+                    if inner.get("msg"):
+                        print(run_recursive(inner["msg"]))
                     exit()
 
             # Get variable
@@ -1872,6 +1887,9 @@ def run(filename, lines):
 
                 return return_values
 
+            elif inner["type"] == "ref":
+                return global_var
+
             # Unary operators
             elif inner["type"] == "unary operator":
                 op = inner["operator"]
@@ -1917,7 +1935,7 @@ def run(filename, lines):
 
                 elif op == '^^':
                     if isinstance(target, (str, list)):
-                        return list(enumerate(target))
+                        return list(list(x) for x in enumerate(target))
                     else:
                         print_error(f"TypeError: expected str or list for enumerating, found type '{target.__class__.__name__}'", inner["pos"])
 
@@ -1956,8 +1974,12 @@ def run(filename, lines):
                     else:
                         print_error(f"TypeError: expected str for case check, found type '{target.__class__.__name__}'", inner["pos"])
 
-                elif op in '?':
+                elif op == '?':
                     return bool(target)
+
+                elif op == '*':
+                    global_var = target
+                    return target
 
             # After operators
             elif inner["type"] == "after operator":
@@ -2023,17 +2045,25 @@ def run(filename, lines):
 
             # Increment (++ and --)
             elif inner["type"] == "increment":
-                var = get_variable(inner["id"])
+                var = run_recursive(inner["target"])
 
                 if isinstance(var, int):
                     d = 1 if inner["mode"] == "add" else -1
                     if inner["position"] == "before":
+                        if inner["target"]["type"] == "ref":
+                            global_var += d
+                            return global_var
                         return set_variable(inner["id"], var + d)
+
                     elif inner["position"] == "after":
+                        if inner["target"]["type"] == "ref":
+                            ret = global_var
+                            global_var += d
+                            return ret
                         set_variable(inner["id"], var + d)
                         return var
                 else:
-                    print_error(f"TypeError: cannot increment type '{var.__class__.__name__}'", inner["pos"])
+                    print_error(f"TypeError: cannot {'increment' if inner['mode'] == 'add' else 'decrement'} type '{var.__class__.__name__}'", inner["pos"])
 
             # Functions
             elif inner["type"] == "function":
@@ -2114,7 +2144,7 @@ def run(filename, lines):
                     print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
 
                 try:
-                    return value in target
+                    return value not in target if inner["not"] else value in target
                 except AttributeError:
                     print_error(f"TypeError: cannot index type '{target.__class__.__name__}'", inner["pos"])
 
@@ -2133,7 +2163,7 @@ def run(filename, lines):
 
             # For loop
             elif inner["type"] == "for loop":
-                string_loop = inner["string"]
+                sum_loop = inner["sum"]
 
                 lst = run_recursive(inner["list"])
                 if isinstance(lst, int) and not isinstance(lst, bool):
@@ -2148,6 +2178,9 @@ def run(filename, lines):
                 for v in lst:
                     if _vars is not None:
                         if _vars["type"] == "list":
+                            if not isinstance(v, (list, str)):
+                                v = [v]
+
                             if len(_vars["values"]) > len(v):
                                 print_error(f"ValueError: not enough values to unpack (targets: {len(_vars['values'])}, values: {len(v)})", inner["pos"])
 
@@ -2179,11 +2212,17 @@ def run(filename, lines):
                         return_values.append(ret[-1])
 
                 stack.pop()
-                return "".join(map(_str, return_values)) if string_loop else return_values
+                if sum_loop:
+                    ret = return_values[0]
+                    for v in return_values[1:]:
+                        ret = run_binary_operator(ret, '+', v)
+                    return ret
+                else:
+                    return return_values
 
             # While loop
             elif inner["type"] == "while loop":
-                string_loop = inner["string"]
+                sum_loop = inner["sum"]
 
                 return_values = []
 
@@ -2206,7 +2245,13 @@ def run(filename, lines):
                     elif ret and ret[-1] is not null:
                         return_values.append(ret[-1])
 
-                return "".join(map(_str, return_values)) if string_loop else return_values
+                if sum_loop:
+                    ret = return_values[0]
+                    for v in return_values[1:]:
+                        ret = run_binary_operator(ret, '+', v)
+                    return ret
+                else:
+                    return return_values
 
             # If statement
             elif inner["type"] == "if":
