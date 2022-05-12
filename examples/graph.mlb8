@@ -3,14 +3,14 @@ draw = (f, x1, y1, x2, y2): {
     minY, maxY = y1 .* y2, y1 ^* y2
     lpad = minY_ ^* maxY_
 
-    ^[maxY, minY - 1, -1] ~ y {
+    ^(maxY, minY - 1, -1) ~ y {
         /(
             [minY, maxY, 0][?y] ? {
                 " " * (lpad - y_) + y
             } ! {
                 " " * lpad
             },
-            ^[minX, maxX + 1] ~ x {
+            ^(minX, maxX + 1) ~ x {
                 corners = [
                     f(x - 0.5) - (y - 0.5) > 0,
                     f(x - 0.5) - (y + 0.5) > 0,

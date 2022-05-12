@@ -24,7 +24,7 @@ after_operators = (  # can't have any of these in binary_operators
 )
 
 binary_operators = (  # already sorted by operator precedence
-    '*#', '#*', '#', '^',                                          # string stuff
+    '#', '^',                                                      # string stuff
     '@',                                                           # misc stuff
     '^*', '.*', '**', '/%', '+-', '/.', '/', '*', '-', '+', '%',   # arithmetic stuff
     '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',        # logic stuff
@@ -130,8 +130,8 @@ class Token:
         self.pos = pos
 
     def __eq__(self, other):
-        """Returns False if self.type == "literal" """
-        if self.type == "literal":
+        """Returns False if self.type == "number" """
+        if self.type == "number":
             return False
         elif isinstance(other, Token):
             return self.type == other.type and self.value == other.value
@@ -168,6 +168,7 @@ class null:
 
 
 null = null()
+global_var = null
 
 
 class ContinueShell(Exception):
@@ -189,10 +190,9 @@ def run(filename, lines):
 
     def print_error(msg: str, pos=None):
         nonlocal lines
+        print(RED, end="")
 
         if SHELL:
-            print(RED, end="")
-
             if pos is None:
                 print(f"Error in file {filename}")
 
@@ -219,8 +219,6 @@ def run(filename, lines):
             raise ContinueShell
 
         else:
-            print(RED, end="")
-
             if pos is None:
                 print(f"Error in file {filename}")
 
@@ -485,9 +483,9 @@ def run(filename, lines):
 
                 def add_number_token():
                     if floating_point:
-                        _tokens.append(Token("literal", float(value), char.pos))
+                        _tokens.append(Token("number", float(value), char.pos))
                     else:
-                        _tokens.append(Token("literal", int(value), char.pos))
+                        _tokens.append(Token("number", int(value), char.pos))
 
                 while t + 1 < len(chars):
 
@@ -726,10 +724,14 @@ def run(filename, lines):
                             print_error("SyntaxError: continue not in loop", token.pos)
 
                     elif token == '%%':
+                        _next()
+                        temp = token
+                        prev()
+
                         statement = {
                             "type": "keyword",
                             "name": "exit",
-                            "msg": parse_expression(bm, optional=True)
+                            "msg": {} if temp == ';' else parse_expression(bm, optional=True)
                         }
 
                 elif token != '\n':
@@ -834,7 +836,7 @@ def run(filename, lines):
                         expr = parse_loop(bm.add(), expr)
 
                     # if statement:
-                    elif token == '?':
+                    elif token.is_one_of(('?', '!')):
                         expr = parse_if(bm.add(), expr)
 
                     # binary operators
@@ -892,21 +894,13 @@ def run(filename, lines):
                         set_ast_pos(expr)
 
                     # augmented assignment
-                    elif token.type == "symbol" and token.value[-1] == '=':
-                        if token.value[:-1] in binary_operators:
-                            inner = {
-                                "type": "binary operator",
-                                "operator": token.value[:-1],
-                                "a": expr,
-                                "b": parse_expression(bm.add())
-                            }
-
-                        else:  # should be after operator
-                            inner = {
-                                "type": "after operator",
-                                "operator": token.value[:-1],
-                                "target": expr
-                            }
+                    elif token.type == 'symbol' and token.value[:-1] in binary_operators and token.value[-1] == '=':
+                        inner = {
+                            "type": "binary operator",
+                            "operator": token.value[:-1],
+                            "a": expr,
+                            "b": parse_expression(bm.add())
+                        }
 
                         if expr.get("type") == "get":
                             expr = {
@@ -967,50 +961,30 @@ def run(filename, lines):
                     return inner
 
             @add_ast_pos
-            def parse_value(bm, optional=False) -> dict:
+            def parse_value(bm, optional=False, mult_shortcut=False) -> dict:
                 _next()
 
                 value = {}
 
-                if bm.is_closing():
-                    if not optional:
-                        print_error("SyntaxError: expected a value", token.pos)
+                if mult_shortcut and not (
+                    token == '(' or
+                    token.type == "string" or
+                    (token.type == "identifier" and not token.is_one_of(("true", "false", "null")))
+                ):
+                    prev()
                     return value
 
-                elif token == '\n':
-                    value = parse_value(bm.add())  # try again until there is a value
-
-                elif token == '~':
-                    _next()
-                    if token.is_one_of(unary_operators):
-                        op = token.value
-                        value = parse_value(bm.add())
-                        inner = {
-                            "type": "unary operator",
-                            "operator": op,
-                            "target": value
-                        }
-
-                        if value.get("type") == "get":
-                            value = {
-                                "type": "set",
-                                "id": value["id"],
-                                "args": inner
-                            }
-
-                        elif value.get("type") == "index":
-                            value = {
-                                "type": "set index",
-                                "target": value["target"],
-                                "index": value["index"],
-                                "args": inner
-                            }
-
-                        else:
-                            print_error("SyntaxError: invalid target for augmented assignment", token.pos)
-
+                temp = token
+                if bm.is_closing():
+                    if temp == '!':
+                        _next()
                     else:
-                        print_error(f"SyntaxError: expected a unary operator after '|', found '{token.value}'", token.pos)
+                        if not optional:
+                            print_error("SyntaxError: expected a value", token.pos)
+                        return value
+
+                if token == '\n':
+                    value = parse_value(bm.add())  # try again until there is a value
 
                 elif token == '(':
                     value = parse_group(BracketManager(bm, ')'))
@@ -1031,11 +1005,24 @@ def run(filename, lines):
                         "fragments": [parse_fragment(frag) for frag in token.value.fragments]
                     }
 
-                elif token.type == "literal":
-                    value = {
-                        "type": "literal",
-                        "value": token.value
-                    }
+                elif token.type == "number":
+                    temp = token.value
+                    if isinstance(token.value, (int, float)) and (v := parse_value(bm.add(), optional=True, mult_shortcut=True)).get("type"):
+                        value = {
+                            "type": "binary operator",
+                            "operator": '*',
+                            "a": {
+                                "type": "number",
+                                "value": temp
+                            },
+                            "b": v
+                        }
+
+                    else:
+                        value = {
+                            "type": "number",
+                            "value": token.value
+                        }
 
                 elif token.type == "identifier":
                     if token.is_one_of(("true", "false", "null")):
@@ -1053,6 +1040,11 @@ def run(filename, lines):
                 elif token == '&':
                     value = {
                         "type": "ref"
+                    }
+
+                elif token == '~':
+                    value = {
+                        "type": "loop ref"
                     }
 
                 elif token.is_one_of((';', '/', '|')):
@@ -1352,7 +1344,7 @@ def run(filename, lines):
 
             @add_ast_pos
             def parse_if(bm, condition) -> dict:
-                on_true = parse_block(bm.add('!'), needs_colon=False)
+                on_true = parse_block(bm.add('!'), needs_colon=False) if token == '?' else prev()
                 on_false = None
 
                 _next()
@@ -1417,7 +1409,7 @@ def run(filename, lines):
             def parse_brace_syntax(bm, value) -> dict:
                 _next()
 
-                if token.is_one_of(('+', '-', '*', '/', '/.', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^')):
+                if token.is_one_of(('+', '-', '*', '/', '/.', '&', '|', '&&', '||', '=', '!', '<', '>', '.', '^', '#')):
                     op = token.value
 
                     _next()
@@ -1437,7 +1429,7 @@ def run(filename, lines):
                     }
 
                 elif bm.is_closing() or token == Token.none:
-                    print_error(f"SyntaxError: expected mode specifier", token.pos)
+                    print_error(f"SyntaxError: expected mode specifier", (tokens[-1] if token == Token.none else token).pos)
 
                 else:
                     print_error(f"SyntaxError: unknown mode '{token.value}'", token.pos)
@@ -1464,10 +1456,9 @@ def run(filename, lines):
         _break = None
         _return = None
 
-        global_var = null
-
         def run_recursive(inner, default_return_value: Any = null):
-            nonlocal _continue, _break, _return, global_var
+            global global_var
+            nonlocal _continue, _break, _return
 
             # Helper functions
             def to_num(n):
@@ -1497,21 +1488,12 @@ def run(filename, lines):
                         print_error(f"TypeError: cannot use type '{b.__class__.__name__}' on right side of join operator", inner["pos"])
 
                 # Split operator
-                elif operator in ('#', '*#', '#*'):
+                elif operator == '#':
                     if isinstance(a, str):
                         if isinstance(b, str):
-
-                            if operator == '#':
-                                if not b:
-                                    return list(a)
-                                return a.split(b)
-
-                            elif operator == '*#':
-                                return list(a.partition(b)[::2])
-
-                            elif operator == '#*':
-                                return list(a.rpartition(b)[::2])
-
+                            if not b:
+                                return list(a)
+                            return a.split(b)
                         else:
                             print_error(f"TypeError: cannot use type '{b.__class__.__name__}' as a delimiter for split", inner["pos"])
                     else:
@@ -1770,7 +1752,7 @@ def run(filename, lines):
             elif inner["type"] == "input":
                 mode = inner["mode"]
                 prompt = run_recursive(inner["prompt"])
-                prompt = "" if prompt is null else prompt
+                prompt = "" if prompt is null else _str(prompt)
 
                 if SHELL:
                     prompt = GREEN + prompt + RESET
@@ -1847,6 +1829,12 @@ def run(filename, lines):
                 target = run_recursive(inner["target"])
                 index = run_recursive(inner["index"])
                 args = run_recursive(inner["args"])
+
+                if isinstance(index, str):
+                    try:
+                        index = int(index)
+                    except ValueError:
+                        print_error(f"ValueError: cannot convert '{index}' to int", inner["pos"])
 
                 try:
                     target[index] = args
@@ -1998,7 +1986,7 @@ def run(filename, lines):
 
                 elif op == '^^':
                     if isinstance(target, (str, list)):
-                        return "".join(map(_str, target))
+                        return " ".join(map(_str, target))
                     else:
                         print_error(f"TypeError: expected str or list for join, found type '{target.__class__.__name__}'", inner["pos"])
 
@@ -2053,14 +2041,14 @@ def run(filename, lines):
                         if inner["target"]["type"] == "ref":
                             global_var += d
                             return global_var
-                        return set_variable(inner["id"], var + d)
+                        return set_variable(inner["target"]["id"], var + d)
 
                     elif inner["position"] == "after":
                         if inner["target"]["type"] == "ref":
                             ret = global_var
                             global_var += d
                             return ret
-                        set_variable(inner["id"], var + d)
+                        set_variable(inner["target"]["id"], var + d)
                         return var
                 else:
                     print_error(f"TypeError: cannot {'increment' if inner['mode'] == 'add' else 'decrement'} type '{var.__class__.__name__}'", inner["pos"])
@@ -2093,10 +2081,18 @@ def run(filename, lines):
                 target = run_recursive(inner["target"])
                 index = run_recursive(inner["index"])
 
+                if isinstance(index, str):
+                    try:
+                        index = int(index)
+                    except ValueError:
+                        print_error(f"ValueError: cannot convert '{index}' to int", inner["pos"])
+
                 if not isinstance(index, int):
                     print_error(f"TypeError: expected int for index, found type '{index.__class__.__name__}'", inner["pos"])
 
                 try:
+                    if isinstance(target, int):
+                        target = list(map(int, str(target)))
                     return target[index]
                 except IndexError:
                     print_error(f"IndexError: index out of range (index: {index}, length: {len(target)})", inner["pos"])
@@ -2106,9 +2102,15 @@ def run(filename, lines):
             # Slicing
             elif inner["type"] == "slice":
                 target = run_recursive(inner["target"])
-                values: list = run_recursive(inner["values"])  # i thought pycharm was smart why do i need typehinting here
+                values = run_recursive(inner["values"])
 
                 for i, v in enumerate(values):
+                    if isinstance(v, str):
+                        try:
+                            v = values[i] = int(v)
+                        except ValueError:
+                            print_error(f"ValueError: cannot convert '{v}' to int", inner["pos"])
+
                     if not isinstance(v, int) and v is not null:
                         print_error(f"TypeError: expected int for slice, found type '{v.__class__.__name__}'", inner["pos"])
 
@@ -2116,6 +2118,8 @@ def run(filename, lines):
                         values[i] = None
 
                 try:
+                    if isinstance(target, int):
+                        target = list(map(int, str(target)))
                     return target[slice(*values)]
                 except TypeError:
                     print_error(f"TypeError: cannot slice type '{target.__class__.__name__}'", inner["pos"])
@@ -2126,7 +2130,10 @@ def run(filename, lines):
                 value = run_recursive(inner["value"])
 
                 if isinstance(target, str) and not isinstance(value, str):
-                    print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        value = str(value)
+                    else:
+                        print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
 
                 try:
                     return target.index(value)
@@ -2141,7 +2148,10 @@ def run(filename, lines):
                 value = run_recursive(inner["value"])
 
                 if isinstance(target, str) and not isinstance(value, str):
-                    print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        value = str(value)
+                    else:
+                        print_error(f"TypeError: expected str for index of str, found type '{value.__class__.__name__}'", inner["pos"])
 
                 try:
                     return value not in target if inner["not"] else value in target
@@ -2153,8 +2163,11 @@ def run(filename, lines):
                 target = run_recursive(inner["target"])
                 value = run_recursive(inner["value"])
 
-                if isinstance(target, str) and not isinstance(value, str):
-                    print_error(f"TypeError: expected str for count in str, found type '{value.__class__.__name__}'", inner["pos"])
+                if isinstance(target, str):
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        value = str(value)
+                    if not isinstance(value, str):
+                        print_error(f"TypeError: expected str for count in str, found type '{value.__class__.__name__}'", inner["pos"])
 
                 try:
                     return target.count(value)
@@ -2166,8 +2179,8 @@ def run(filename, lines):
                 sum_loop = inner["sum"]
 
                 lst = run_recursive(inner["list"])
-                if isinstance(lst, int) and not isinstance(lst, bool):
-                    lst = list(map(int, str(lst)))
+                if isinstance(lst, int):
+                    lst = list(range(lst))
                 elif not isinstance(lst, (str, list)):
                     print_error(f"TypeError: cannot iterate over type '{lst.__class__.__name__}'", inner["pos"])
 
@@ -2192,6 +2205,9 @@ def run(filename, lines):
 
                         else:
                             set_variable(_vars["id"], v, force_inner=True)
+
+                    # else:
+                    #     loop_var = v  FIXME idfk wtf tf im doing
 
                     ret = run_recursive(inner["statements"])
 
@@ -2301,6 +2317,9 @@ def run(filename, lines):
                 elif op == '!':
                     return all(x not in compare[:n] for n, x in enumerate(compare))
 
+                elif op == '#':
+                    return max(compare, key=lambda x: compare.count(x))
+
                 else:
                     ret = compare[0]
                     for v in compare[1:]:
@@ -2336,20 +2355,21 @@ def run(filename, lines):
                 return target
 
             # Ints, floats etc.
-            elif inner["type"] == "literal":
+            elif inner["type"] == "number":
                 return inner["value"]
 
             return null
 
-        if SHELL:
+        try:
             line_return_value = run_recursive(ast["statements"])
-            if line_return_value and line_return_value[-1] != null:
+            if SHELL and line_return_value and line_return_value[-1] != null:
                 out = _str(line_return_value[-1])
                 if isinstance(line_return_value[-1], str):
                     out = f'"{add_escapes(out)}"'
                 print(CYAN + out + RESET)
-        else:
-            run_recursive(ast["statements"])
+
+        except (KeyboardInterrupt, EOFError):
+            print_error("Manually stopped execution")
 
     except RecursionError:
         print_error("RecursionError: recursion limit reached")

@@ -1,4 +1,4 @@
-board = ^3 ~ {
+board = 3 ~ {
     [" "] * 3
 }
 
@@ -17,7 +17,7 @@ checkWin = () : {
         }
     }
 
-    ^(board[0]_) ~ col {
+    board[0]_ ~ col {
         (board ~ row {
             row.col
         }){=} ? {
@@ -61,7 +61,7 @@ doTurn = () : {
 }
 
 turn = "x"
-^9 ~ {
+9 ~ {
     doTurn()
 }
 
