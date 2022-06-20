@@ -5,6 +5,9 @@ doesn't know how to make programming languages.
 The main goal of the language is to shorten code by removing words wherever
 possible, while still keeping it somewhat easy to read and understand.
 
+# Try Online
+There is an online version (stupid advertisign ikik) called malb8rowser, but please note it is unstable and may break. Try it [here](https://malb8dge.seven7four4.repl.co/).
+
 # Documentation [OUTDATED]
 
 ## Running a malb8dge program
