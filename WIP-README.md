@@ -11,5 +11,5 @@ An interactive shell also exists, which can be launched by running `py <location
 
 Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser website](https://malb8dge.seven7four4.repl.co) to test your code online. (It has yet to become good though.)
 
-## Structure
+---
 WIP
