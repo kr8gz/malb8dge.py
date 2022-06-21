@@ -3,11 +3,30 @@ malb8dge (credit to [@itsmebombie](https://github.com/itsmebombie) for the name)
 
 # Documentation
 
-## Running a malb8dge program
-malb8dge is written in pure Python. That means there are no requirements, except for a way to run Python files.
-The malb8dge interpreter can be run using `py <location of malb8dge file> <.mlb8 source file>`.
+## Getting started
+malb8dge is written in pure Python. This means that you will only need Python and nothing else to run the malb8dge interpreter.
 
-An interactive shell also exists, which can be launched by running `py <location of malb8dge file>` with no other arguments.
+To get started, run `py setup.py install` in the directory where you downloaded this repository.
+Then create a file called *hello.mlb8* with the following contents:
+```
+;"Hello, world!"
+```
+
+To run this program, simply type `malb8dge hello` in your favorite terminal.
+If `Hello, world!` was printed to your console, then congratulations! You have written your first malb8dge program!
+
+Now let's break down this program to understand what exactly is happening.
+
+* `;` is an operator that prints everything that comes after it to the console.
+* `"Hello, world!"` is a string, which you probably already know from other programming languages.
+(If you have no programming experience, I strongly recommend immediately finding another activity to waste your precious time on.)
+
+Great! It will almost certainly only go downhill from here on.
+
+## How to run malb8dge programs
+As you might have already noticed, malb8dge files are run using the `malb8dge` command, followed by the location of the .mlb8 file you want to run.
+
+An interactive shell also exists, which can be launched by just running `malb8dge` with no additional arguments.
 
 Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser website](https://malb8dge.seven7four4.repl.co) to test your code online. (It has yet to become good though.)
 
