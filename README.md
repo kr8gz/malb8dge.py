@@ -5,7 +5,7 @@ doesn't know how to make programming languages.
 The main goal of the language is to shorten code by removing words wherever
 possible, while still keeping it somewhat easy to read and understand.
 
-# Documentation
+# Documentation [OUTDATED]
 
 ## Running a malb8dge program
 Run `py <location of malb8dge file> <location of .mlb8 file>`
