@@ -1464,6 +1464,8 @@ def run(filename, lines):
             def to_num(n):
                 if isinstance(n, (int, float)):
                     return n
+                elif n is null:
+                    return 0
                 try:
                     n = int(n)
                 except ValueError:
@@ -1700,7 +1702,7 @@ def run(filename, lines):
                     if isinstance(frag, str):
                         c += frag
                     elif val := run_recursive(frag):
-                        c += _str(val[-1])
+                        c += add_escapes(_str(val[-1]))
                 return c
 
             def append_stack(_type):
@@ -2388,10 +2390,7 @@ if cliargs.debug:
     DEBUG_MODE = True
 
 if os.path.isfile(cliargs.file):
-    if cliargs.file != "<shell>":
-        run_file(cliargs.file)
-    else:
-        print("cannot run a malb8dge program with name <shell>")
+    run_file(cliargs.file)
 
 elif os.path.isfile(cliargs.file + ".mlb8"):
     run_file(cliargs.file + ".mlb8")
