@@ -1,6 +1,6 @@
-import random
 from itertools import zip_longest
 from typing import Any
+import random
 import argparse
 import os
 import json
