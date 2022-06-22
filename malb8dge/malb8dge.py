@@ -1684,8 +1684,12 @@ def run(filename, lines):
 
                 if not isinstance(_target, func):
                     print_error(f"TypeError: type '{_target.__class__.__name__}' is not callable", inner["pos"])
+                elif not _target.arguments and len(_args):
+                    print_error(f"ArgumentError: function expected no arguments", inner["pos"])
+
                 elif len(_args) > len(_target.arguments):
-                    print_error(f"ArgumentError: expected at most {len(_target.arguments)} arguments, found {len(_args)}", inner["pos"])
+                    # *args type thing
+                    _args = _args[:len(_target.arguments) - 1] + [_args[len(_target.arguments) - 1:]]
 
                 append_stack("function")
                 for n, a in enumerate(_target.arguments):
