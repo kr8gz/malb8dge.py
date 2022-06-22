@@ -1,1 +1,0 @@
-b=3~:[w=" "]*3;p=:;(b~r:w+r^" | "+w)^(*'10+11"-"+&);t="x";9~{p;c=w;b~r:r{=}?c=r.0;3~s:(b~r:r.s){=}?c=b.0.s;m=b.1.1;[b.0.0,m,b.2.2]{=}|[b.2.0,m,b.0.2]{=}?c=m;c!=w?%%c+" wins!";;"Turn: "+t;*$("Enter pos: ")>9|&--<1?%%"Invalid pos";x,y=&/%3;b.x.y!=w?%%"Pos already occupied";b.x.y=t;t=t\x|o\};p;;"Draw!"
