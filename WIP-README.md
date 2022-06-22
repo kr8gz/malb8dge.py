@@ -73,6 +73,22 @@ Unfortunately, this means that initializing a list with a variable and a functio
 10 ~ i: ;i
 10 ~: ;~
 ```
+*(This is already valid syntax, but the value of the loop variable itself is always `null`)*
+
+Loop variables would reduce the amount of characters in a compacted program by a tiny amount.
+But there is more good news for programmers - you will have to come up with fewer variable names as they will all be called `~`!
+
+## Brace syntax overhaul
+...
+
+## Improve block parsing
+...
+
+## .0 after math operations
+...
+
+## Macros
+...
 
 # Thanks
 * Thanks to [@itsmebombie](https://github.com/itsmebombie) for coming up with the name
