@@ -47,6 +47,9 @@ Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser web
 # Creating Tic-tac-toe in malb8dge
 ...
 
+# Pushing malb8dge to its limits
+...
+
 # Documentation
 The malb8dge documentation can be found [here](https://github.com/kr8gz/malb8dge/blob/master/docs.md).
 
