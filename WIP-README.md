@@ -31,7 +31,19 @@ An interactive shell also exists, which can be launched by just running `malb8dg
 
 Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser website](https://malb8dge.seven7four4.repl.co) to test your code online. (It has yet to become good though.)
 
----
-WIP
+# Basic ideas
+...
 
-(Also thanks to [@zTags](https://github.com/zTags) for existing)
+# first program thingy
+...
+
+# more advanced things
+...
+
+# final project thing
+...
+
+# Documentation
+...
+
+(Thanks to [@zTags](https://github.com/zTags) for helping with the layout of the README)
