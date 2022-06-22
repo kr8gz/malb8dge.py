@@ -2,7 +2,7 @@
 ...
 
 # Planned features and changes
-## Fixing scope issues
+## Fix scope issues
 ```
 x = 2
 f = : {
