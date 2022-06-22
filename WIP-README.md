@@ -35,13 +35,13 @@ Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser web
 # Basic ideas
 ...
 
-# first program thingy
+# Making a guessing game
 ...
 
-# more advanced things
+# Advanced syntax 
 ...
 
-# final project thing
+# Creating Tic-tac-toe in malb8dge
 ...
 
 # Documentation
