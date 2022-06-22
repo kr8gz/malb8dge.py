@@ -1,3 +1,4 @@
+import random
 from itertools import zip_longest
 from typing import Any
 import argparse
@@ -25,14 +26,14 @@ after_operators = (  # can't have any of these in binary_operators
 
 binary_operators = (  # already sorted by operator precedence
     '#', '^',                                                      # string stuff
-    '@',                                                           # misc stuff
+    '??', '@',                                                     # misc stuff
     '^*', '.*', '**', '/%', '+-', '/.', '/', '*', '-', '+', '%',   # arithmetic stuff
     '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',        # logic stuff
 )
 
 unary_operators = (
-    '.', '..', '`', '``',                           # string stuff
-    '-', '@', '^', '^^', '#', '!', '\'', '?', '*',  # misc stuff
+    '.', '..', '`', '``',                                 # string stuff
+    '-', '@', '^', '^^', '#', '!', '\'', '?', '*', '??',  # misc stuff
 )
 
 misc_combined_symbols = (
@@ -130,7 +131,7 @@ class Token:
         self.pos = pos
 
     def __eq__(self, other):
-        """Returns False if self.type == "number" """
+        """ Returns False if self.type == "number" """
         if self.type == "number":
             return False
         elif isinstance(other, Token):
@@ -1456,7 +1457,7 @@ def run(filename, lines):
         _break = None
         _return = None
 
-        def run_recursive(inner, default_return_value: Any = null):
+        def run_recursive(inner, default_return_value: Any = null, try_no_paren_call=False):
             global global_var
             nonlocal _continue, _break, _return
 
@@ -1500,6 +1501,16 @@ def run(filename, lines):
                             print_error(f"TypeError: cannot use type '{b.__class__.__name__}' as a delimiter for split", inner["pos"])
                     else:
                         print_error(f"TypeError: cannot split type '{a.__class__.__name__}'", inner["pos"])
+
+                # Random integer operator
+                elif operator == '??':
+                    if isinstance(a, int):
+                        if isinstance(b, int):
+                            return random.randint(a, b)
+                        else:
+                            print_error(f"TypeError: cannot use binary random operator with type '{b.__class__.__name__}'", inner["pos"])
+                    else:
+                        print_error(f"TypeError: cannot use binary random operator with type '{a.__class__.__name__}'", inner["pos"])
 
                 # Convert to and from base
                 elif operator == '@':
@@ -1739,7 +1750,8 @@ def run(filename, lines):
                 ret = []
 
                 for i in range(len(inner)):
-                    r = run_recursive(inner[i])
+                    r = run_recursive(inner[i], try_no_paren_call=True)
+
                     if _return is not None or _break is not None or _continue is not None:
                         break
 
@@ -1820,7 +1832,12 @@ def run(filename, lines):
 
             # Get variable
             elif inner["type"] == "get":
-                return get_variable(inner["id"])
+                var = get_variable(inner["id"])
+
+                if try_no_paren_call and isinstance(var, func):
+                    return run_function_call(var, [])
+
+                return var
 
             # Set variable
             elif inner["type"] == "set":
@@ -1970,6 +1987,17 @@ def run(filename, lines):
                 elif op == '*':
                     global_var = target
                     return target
+
+                elif op == '??':
+                    if isinstance(target, int):
+                        return random.randint(0, target)
+                    elif isinstance(target, (str, list)):
+                        if target:
+                            return random.choice(target)
+                        else:
+                            print_error("ValueError: iterable must contain at least 1 element to pick from", inner["pos"])
+                    else:
+                        print_error(f"ValueError: cannot use unary random operator on type '{target.__class__.__name__}'", inner["pos"])
 
             # After operators
             elif inner["type"] == "after operator":
