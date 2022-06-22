@@ -2216,7 +2216,7 @@ def run(filename, lines):
                     if _continue is not None:
                         return_values.append(_continue)
                         _continue = None
-                        break
+                        continue
 
                     elif _break is not None:
                         return_values.append(_break)
@@ -2250,7 +2250,7 @@ def run(filename, lines):
                     if _continue is not None:
                         return_values.append(_continue)
                         _continue = None
-                        break
+                        continue
 
                     elif _break is not None:
                         return_values.append(_break)
