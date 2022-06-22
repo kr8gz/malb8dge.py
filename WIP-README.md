@@ -66,9 +66,9 @@ sub = a, b: a - b  ### UndefinedError: variable 'a' is not defined
 ```
 Removing the need for parentheses will make function definitions more consistent, as parentheses are already redundant for functions with only one argument.
 This will also remove at least 2 characters per function when compacting malb8dge code.
-Unfortunately, this means that initializing a list with a variable and a function definition will require 2 more characters, but this is a trade-off I'm willing to make.
+Unfortunately, this means that initializing a list with a variable and a function definition will require 2 more characters, but this is a trade-off I am willing to make.
 
-## Loop variables
+## Loop variable
 ```
 10 ~ i: ;i
 10 ~: ;~
