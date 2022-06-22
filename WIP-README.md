@@ -41,6 +41,9 @@ Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser web
 # Advanced syntax 
 ...
 
+# Compacting code
+...
+
 # Creating Tic-tac-toe in malb8dge
 ...
 
