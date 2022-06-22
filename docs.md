@@ -36,13 +36,22 @@ Loop variables would reduce the amount of characters in a compacted program by a
 But there is more good news for programmers - you will have to come up with fewer variable names as they will all be called `~`!
 
 ## Brace syntax overhaul
-...
+This one is complicated to explain.
+"String loops" and later "sum loops" showed that the current brace syntax and special advanced array functions are just a complete mess in general.
+Merging loops, brace syntax and special array functions while also keeping a simplified version of the current brace syntax will make everything more consistent and versatile.
+Combined with the addition of loop variables (see above), this will guarantee that at least 3 characters can be removed for every use of the current brace syntax.
 
 ## Improve block parsing
-...
+This shouldn't change any syntax or anything else, but blocks and block parsing are so convoluted that at this point I do not even know what is considered a block anymore.
 
 ## .0 after math operations
-...
+If an operation yields an integer result, the result type should be an integer and not a float. This is mainly for getting rid of the extra character from the `/.` operator when it is not needed, but also for prettier printing results.
 
 ## Macros
-...
+```
+\D == "?" ? ;"don't know 
+a, b = _, _
+a Da"
+b Db"
+```
+This syntax will replace repetitions in the code that cannot be efficiently abstracted into a function.
