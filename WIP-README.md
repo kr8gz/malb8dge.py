@@ -23,6 +23,8 @@ Now let's break down this program to understand what exactly is happening.
 Great! It will almost certainly only go downhill from here on.
 
 ## Running malb8dge programs
+(Thanks to [@DexterHill0](https://github.com/DexterHill0) for helping me with this)
+
 As you might have already noticed, malb8dge files are run using the `malb8dge` command, followed by the location of the .mlb8 file you want to run.
 
 An interactive shell also exists, which can be launched by just running `malb8dge` with no additional arguments.
@@ -31,3 +33,5 @@ Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser web
 
 ---
 WIP
+
+(Also thanks to [@zTags](https://github.com/zTags) for existing)
