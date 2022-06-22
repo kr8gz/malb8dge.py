@@ -2,11 +2,18 @@
 malb8dge is an esolang that aims to shorten code by removing words and reducing repetitions wherever possible, while still keeping it somewhat easy to understand.
 
 # Getting started
-## Hello, world!
+## Installing malb8dge
 malb8dge is written in pure Python. This means that you will only need Python and nothing else to run the malb8dge interpreter.
 
-To get started, run `py setup.py install` in the directory where you downloaded this repository.
-Then create a file called *hello.mlb8* with the following contents:
+To get started, download the repository. (Technically, only the *malb8dge* folder and the *setup.py* file are needed.)
+From your terminal, run
+```
+py setup.py install
+```
+in the directory where you downloaded this repository.
+
+## Hello, world!
+Create a file called *hello.mlb8* with the following contents:
 ```
 ;"Hello, world!"
 ```
@@ -30,7 +37,8 @@ An interactive shell also exists, which can be launched by just running `malb8dg
 Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser website](https://malb8dge.seven7four4.repl.co) to test your code online. (It has yet to become good though.)
 
 ## Updating malb8dge
-...
+There is no fancy version manager or installer for malb8dge.
+If you feel like updating to the latest malb8dge version, just check if the repository has been updated and follow the installation steps again.
 
 # Basic ideas
 ...
