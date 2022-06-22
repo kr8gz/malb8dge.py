@@ -45,7 +45,7 @@ Alternatively, you can use [@Unzor](https://github.com/Unzor)'s [malb8rowser web
 ...
 
 # Documentation
-The malb8dge documentation can be found [here](https://github.com/kr8gz/malb8dge/blob/master/documentation.md).
+The malb8dge documentation can be found [here](https://github.com/kr8gz/malb8dge/blob/master/docs.md).
 
 # Thanks
 * Thanks to [@itsmebombie](https://github.com/itsmebombie) for coming up with the name
