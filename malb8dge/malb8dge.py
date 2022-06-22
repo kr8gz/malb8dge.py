@@ -127,7 +127,8 @@ class Token:
 
     def __init__(self, _type: str, value, pos: tuple[int, int]):
         self.type = _type
-        self.value = value
+        self.value = value  # this may be changed
+        self.init_value = value  # this must not be changed
         self.pos = pos
 
     def __eq__(self, other):
@@ -142,7 +143,7 @@ class Token:
         return any(self == o for o in others)
 
     def __repr__(self):
-        return f"Token(type={self.type}, {repr(self.value)}, {self.pos[0]}:{self.pos[1]})"
+        return f"Token(type={self.type}, {repr(self.value)} {f'({repr(self.init_value)})' if self.init_value != self.value else ''}, {self.pos[0]}:{self.pos[1]})"
 
 
 Token.none = Token("", None, (0, 0))
@@ -746,7 +747,7 @@ def run(filename, lines):
                 if token == ';':
                     prev()
                 elif not bm.is_closing() and token != Token.none:
-                    print_error(f"SyntaxError: expected end of statement, found '{token.value}'", token.pos)
+                    print_error(f"SyntaxError: expected end of statement, found '{token.init_value}'", token.pos)
 
                 return statement
 
@@ -793,7 +794,7 @@ def run(filename, lines):
                         }
 
                     else:
-                        print_error(f"SyntaxError: expected a comma or a newline, found '{token.value}'", token.pos)
+                        print_error(f"SyntaxError: expected a comma or a newline, found '{token.init_value}'", token.pos)
 
                 else:
                     if bm.bracket:
@@ -929,7 +930,7 @@ def run(filename, lines):
                         prev()
 
                     else:
-                        print_error(f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.value}'", token.pos)
+                        print_error(f"SyntaxError: expected an operator or {'a closing bracket' if bm.bracket else 'a newline'}, found '{token.init_value}'", token.pos)
 
                 else:
                     if bm.bracket:
@@ -1099,7 +1100,7 @@ def run(filename, lines):
                         print_error("SyntaxError: expected a value", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
 
                     else:
-                        print_error(f"SyntaxError: expected a value, found '{token.value}'", token.pos)
+                        print_error(f"SyntaxError: expected a value, found '{token.init_value}'", token.pos)
 
                 else:
                     prev()
@@ -1404,7 +1405,7 @@ def run(filename, lines):
                 else:
                     if token == Token.none:
                         print_error(f"SyntaxError: expected statement block", (tokens[t - 1].pos[0], tokens[t - 1].pos[1] + 1))
-                    print_error(f"SyntaxError: expected ':', ';', '[' or '{{', found '{token.value}'", token.pos)
+                    print_error(f"SyntaxError: expected ':', '+', '[' or '{{', found '{token.init_value}'", token.pos)
 
             @add_ast_pos
             def parse_brace_syntax(bm, value) -> dict:
@@ -1433,7 +1434,7 @@ def run(filename, lines):
                     print_error(f"SyntaxError: expected mode specifier", (tokens[-1] if token == Token.none else token).pos)
 
                 else:
-                    print_error(f"SyntaxError: unknown mode '{token.value}'", token.pos)
+                    print_error(f"SyntaxError: unknown mode '{token.init_value}'", token.pos)
 
             while t + 1 < len(tokens):
                 if (stmt := parse_statement(BracketManager())).get("type"):
