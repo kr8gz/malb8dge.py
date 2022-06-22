@@ -2384,36 +2384,45 @@ cliargsparser = argparse.ArgumentParser(
 )
 cliargsparser.add_argument('file', nargs='?', default="", help="The input file")
 cliargsparser.add_argument('-d', '--debug', action="store_true", help="Whether to run in Debug Mode")
-cliargs = cliargsparser.parse_args()
 
-if cliargs.debug:
-    DEBUG_MODE = True
 
-if os.path.isfile(cliargs.file):
-    run_file(cliargs.file)
+def main():
+    global DEBUG_MODE, SHELL
 
-elif os.path.isfile(cliargs.file + ".mlb8"):
-    run_file(cliargs.file + ".mlb8")
+    cliargs = cliargsparser.parse_args()
 
-elif cliargs.file:
-    print("This file doesn't exist")
+    if cliargs.debug:
+        DEBUG_MODE = True
 
-else:
-    SHELL = True
-    shell_lines = []
-    while True:
-        _line = ""
-        try:
-            _line = input(GRAY + ">>> " + RESET)
-        except KeyboardInterrupt:
-            print()
-            continue
-        except EOFError:
-            exit()
-        finally:
-            shell_lines.append(_line)
+    if os.path.isfile(cliargs.file):
+        run_file(cliargs.file)
 
-        try:
-            run("<shell>", shell_lines)
-        except ContinueShell:
-            continue
+    elif os.path.isfile(cliargs.file + ".mlb8"):
+        run_file(cliargs.file + ".mlb8")
+
+    elif cliargs.file:
+        print("This file doesn't exist")
+
+    else:
+        SHELL = True
+        shell_lines = []
+        while True:
+            _line = ""
+            try:
+                _line = input(GRAY + ">>> " + RESET)
+            except KeyboardInterrupt:
+                print()
+                continue
+            except EOFError:
+                exit()
+            finally:
+                shell_lines.append(_line)
+
+            try:
+                run("<shell>", shell_lines)
+            except ContinueShell:
+                continue
+
+
+if __name__ == "__main__":
+    main()
