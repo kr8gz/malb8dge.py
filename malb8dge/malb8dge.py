@@ -1607,6 +1607,10 @@ def run(filename, lines):
                             return to_num(a - b)
                         else:
                             print_error(f"TypeError: cannot subtract type '{b.__class__.__name__}' from type '{a.__class__.__name__}'", inner["pos"])
+                    elif isinstance(a, str) and isinstance(b, str):
+                        if len(a) != 1 or len(b) != 1:
+                            print_error(f"ValueError: expected strings with 1 character each, found {len(a)} and {len(b)} characters", inner["pos"])
+                        return "".join(chr(c) for c in range(ord(a), ord(b) + 1))
                     else:
                         print_error(f"TypeError: cannot subtract from type '{a.__class__.__name__}'", inner["pos"])
 
