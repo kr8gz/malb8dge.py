@@ -210,6 +210,8 @@ number = 1 ?? 100
 
 ```
 
+Awesome! You have now learnt about if-statements and how to work with loops, and also got to know some operators!
+In the next section, we will ggrgrgrrgrgrg
 
 # Compacting code
 tuos was the original intention of malb8dge so wer'ee gonna do that now
