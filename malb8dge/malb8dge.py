@@ -2022,7 +2022,7 @@ def run(filename, lines):
 
                 elif op == '??':
                     if isinstance(target, int):
-                        return random.randint(0, target)
+                        return random.randint(1, target)
                     elif isinstance(target, (str, list)):
                         if target:
                             return random.choice(target)
