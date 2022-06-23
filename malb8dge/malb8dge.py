@@ -32,8 +32,8 @@ binary_operators = (  # already sorted by operator precedence
 )
 
 unary_operators = (
-    '.', '..', '`', '``',                                 # string stuff
-    '-', '@', '^', '^^', '#', '!', '\'', '?', '*', '??',  # misc stuff
+    '.', '..', '`', '``',                            # string stuff
+    '-', '@', '^', '^^', '#', '!', '\'', '*', '??',  # misc stuff
 )
 
 misc_combined_symbols = (
@@ -632,6 +632,14 @@ def run(filename, lines):
                     else:
                         return BracketManager(self, self.bracket, *self.sep, '')
 
+                def func(self):
+                    self.in_func = True
+                    return self
+
+                def loop(self):
+                    self.in_loop = True
+                    return self
+
                 def is_closing(self):
                     if token == self.bracket:
                         if self.sep:  # when unclosed scopes before opening bracket
@@ -1001,6 +1009,18 @@ def run(filename, lines):
                         "statements": parse_block(bm.add())
                     }
 
+                elif token == '?':
+                    block = parse_block(bm.add().loop(), needs_colon=False, allow_sum_loop=True)
+                    value = {
+                        "type": "while loop",
+                        "condition": {
+                            "type": "keyword",
+                            "name": "true"
+                        },
+                        "statements": block[0],
+                        "sum": block[1]
+                    }
+
                 elif token.type == "string":
                     value = {
                         "type": "string",
@@ -1346,7 +1366,9 @@ def run(filename, lines):
 
             @add_ast_pos
             def parse_if(bm, condition) -> dict:
-                on_true = parse_block(bm.add('!'), needs_colon=False) if token == '?' else prev()
+                invert = token == '!'
+
+                on_true = parse_block(bm.add('!'), needs_colon=False)
                 on_false = None
 
                 _next()
@@ -1359,6 +1381,7 @@ def run(filename, lines):
                 return {
                     "type": "if",
                     "condition": condition,
+                    "invert": invert,
                     "true": on_true,
                     "false": on_false
                 }
@@ -1993,9 +2016,6 @@ def run(filename, lines):
                     else:
                         print_error(f"TypeError: expected str for case check, found type '{target.__class__.__name__}'", inner["pos"])
 
-                elif op == '?':
-                    return bool(target)
-
                 elif op == '*':
                     global_var = target
                     return target
@@ -2313,7 +2333,8 @@ def run(filename, lines):
 
             # If statement
             elif inner["type"] == "if":
-                ret = run_recursive(inner["true" if run_recursive(inner["condition"]) else "false"])
+                cond = run_recursive(inner["condition"])
+                ret = run_recursive(inner["true" if (not cond if inner["invert"] else cond) else "false"])
                 return ret[-1] if ret else null
 
             # x{...} syntax
