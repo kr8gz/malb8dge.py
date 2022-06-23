@@ -88,7 +88,7 @@ We can also add an input prompt like this:
     guess = _("Your guess: ")
 }
 ```
-This will print `Your guess: ` before waiting for user input.
+This will print `Your guess:` before waiting for user input.
 
 Now we want to compare `guess` with the secret `number` and output a message depending on the outcome of the comparison.
 We can do this using if-statements.
