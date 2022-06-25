@@ -67,11 +67,11 @@ def add_escapes(s):
 
 
 def isnum(s):
-    return s and all(c in "0123456789" for c in s)
+    return all(c in "0123456789" for c in s) and s
 
 
 def isalphanum(s):
-    return s and all(c in "0123456789" or c.isalpha() for c in s)
+    return all(c in "0123456789" or c.isalpha() for c in s) and s
 
 
 # Helper classes
