@@ -2,6 +2,13 @@
 ...
 
 # Planned features and changes
+## JS-like comparisons
+```
+;"3" == 3  ### false
+;"4" > 2   ### TypeError: cannot compare type 'str' with type 'int'
+```
+Since things like `123[1]` are already allowed, I see no reason not to be able to compare strings and integers.
+
 ## Fix scope issues
 ```
 x = 2

@@ -135,6 +135,7 @@ This can be achieved by using the `x$` operator:
 This causes a few more problems though.
 Not every text input can be converted to a number.
 The program will not be able to do anything with inputs such as `"hello"` or `"!@#$%^&*()"`, and this will cause it to stop with an error.
+
 Instead of immediately converting the input to a number, we can check first if the input only contains digits using the `x$$` operator.
 If that is not the case, we can print a message that the input was invalid using the `;x` operator from the *Hello, world!* example.
 Finally, we also want to skip the rest of the loop with the checking part for this iteration if the input is invalid.
@@ -210,6 +211,8 @@ number = 1 ?? 100
 
 ```
 
+Awesome! You have now learnt about if-statements and how to work with loops, and also got to know some operators!
+In the next section, we will ggrgrgrrgrgrg
 
 # Compacting code
 tuos was the original intention of malb8dge so wer'ee gonna do that now
