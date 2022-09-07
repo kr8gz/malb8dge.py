@@ -28,7 +28,7 @@ binary_operators = (  # already sorted by operator precedence
     '#', '^',                                                      # string stuff
     '??', '@',                                                     # misc stuff
     '^*', '.*', '**', '/%', '+-', '/.', '/', '*', '-', '+', '%',   # arithmetic stuff
-    '>', '<', '>>', '<<', '==', '!=', '&', '|', '&&', '||',        # logic stuff
+    '>', '<', '>>', '<<', '==', '-?', '!=', '&', '|', '&&', '||',  # logic stuff
 )
 
 unary_operators = (
@@ -404,7 +404,8 @@ def run(filename, lines):
                                 else:
                                     value += "}"
                             else:
-                                print_error("SyntaxError: unescaped '}' in replace", char.pos)
+                                # print_error("SyntaxError: unescaped '}' in replace", char.pos)
+                                value += "}"
 
                         else:
                             if char_mode:
@@ -471,7 +472,8 @@ def run(filename, lines):
                                 else:
                                     value += "}"
                             else:
-                                print_error("SyntaxError: unescaped '}' in string", char.pos)
+                                # print_error("SyntaxError: unescaped '}' in string", char.pos)
+                                value += "}"
 
                         else:
                             value += char.value
@@ -854,8 +856,11 @@ def run(filename, lines):
                         _expr = expr
 
                         # operator precedence
-                        while _expr["type"] == "binary operator" and binary_operators.index(
-                                token.value) < binary_operators.index(_expr["operator"]):
+                        while (
+                                _expr["type"] == "binary operator"
+                                and binary_operators.index(token.value) < binary_operators.index(_expr["operator"])
+                                and "fixed" not in _expr
+                        ):
                             _expr = _expr["b"]
 
                         inner = _expr.copy()
@@ -1037,7 +1042,8 @@ def run(filename, lines):
                                 "type": "number",
                                 "value": temp
                             },
-                            "b": v
+                            "b": v,
+                            "fixed": True
                         }
 
                     else:
@@ -1124,6 +1130,9 @@ def run(filename, lines):
 
                 else:
                     prev()
+                    return value
+
+                if mult_shortcut:
                     return value
 
                 set_ast_pos(value)
@@ -1694,6 +1703,9 @@ def run(filename, lines):
 
                 elif operator == '==':
                     return a == b
+
+                elif operator == '-?':
+                    return 1 if a == b else -1
 
                 elif operator == '!=':
                     return a != b
